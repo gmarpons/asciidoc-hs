@@ -1,17 +1,17 @@
 = asciidoc-hs
 
-Extensible and lossless parser for the lightweight markup language https://asciidoctor.org/docs/what-is-asciidoc/[Asciidoc] that can be used as a https://pandoc.org/[Pandoc] front-end.
+Extensible and lossless parser for the lightweight markup language https://asciidoctor.org/docs/what-is-asciidoc/[AsciiDoc] that can be used as a https://pandoc.org/[Pandoc] front-end.
 
 == Intended Features
 
 [NOTE]
 WIP. Virtually starting out.
 
-- [ ] Full compatibility with https://asciidoctor.org[Asciidoctor] and with the result of the  https://www.eclipse.org/org/workinggroups/asciidoc-charter.php[Asciidoc standardization process] (long-term goal).
-- [ ] Generates Pandoc JSON.
+- [ ] Full compatibility with https://asciidoctor.org[Asciidoctor] and with the result of the  https://www.eclipse.org/org/workinggroups/asciidoc-charter.php[AsciiDoc standardization process] (long-term goal).
+- [ ] Generates Pandoc JSON. Other back-ends can be easily added.
 - [ ] Complete and precise source mapping information can be attached to the output.
 - [ ] Modular and extensible design: some syntactic features can be disabled and others can be easily added.
-- [ ] Scriptable in a similar way than Pandoc, but with an Asciidoc-specific and complete AST (long-term goal).
+- [ ] Scriptable in a similar way to Pandoc, but using and AST/DOM that is specific to AsciiDoc and fully supports the result of the standardization effort (long-term goal).
 - [ ] Can be used for (lossless) source-to-source transformations (long-term goal).
 - [ ] Implemented in Haskell.
 
