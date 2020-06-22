@@ -1,0 +1,37 @@
+cabal-version:       2.4
+name:                asciidoc-hs
+version:             0.1.0.0
+synopsis:            AsciiDoc parser that can be used as a Pandoc front-end
+-- description:
+homepage:            https://github.com/gmarpons/asciidoc-hs
+bug-reports:         https://github.com/gmarpons/asciidoc-hs/issues
+license:             BSD-3-Clause
+license-file:        LICENSE
+author:              Guillem Marpons
+maintainer:          gmarpons@mailbox.org
+copyright:           Guillem Marpons 2020
+category:            Text
+extra-source-files:  CHANGELOG.adoc, README.adoc
+
+library
+  exposed-modules:     Text.Asciidoc.Inlines
+  -- other-modules:
+  -- other-extensions:
+  build-depends:       base ^>=4.14.0.0
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+
+executable asciidoc-hs
+  main-is:             Main.hs
+  -- other-modules:
+  -- other-extensions:
+  build-depends:       base ^>=4.14.0.0, asciidoc-hs
+  hs-source-dirs:      exe
+  default-language:    Haskell2010
+
+test-suite asciidoc-hs-test
+  default-language:    Haskell2010
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             MyLibTest.hs
+  build-depends:       base ^>=4.14.0.0
