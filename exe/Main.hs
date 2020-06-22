@@ -1,8 +1,10 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
+import Data.Text ()
 import qualified Text.Asciidoc.Inlines as Inlines
 
 main :: IO ()
 main = do
-  putStrLn "Hello, Haskell!"
-  Inlines.someFunc
+  Inlines.parseTestInline "*Parse* me!"
