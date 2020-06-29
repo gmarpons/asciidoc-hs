@@ -1,10 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
-
 module Main where
 
 import Data.Text ()
-import qualified Text.Asciidoc.Inlines as Inlines
+import qualified Text.AsciiDoc.Inlines as Inlines
 
 main :: IO ()
 main = do
-  Inlines.parseTestInline "*Parse* me!"
+  Inlines.parseTestInlines "Test" "*Parse* me!"

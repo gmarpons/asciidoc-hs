@@ -16,28 +16,28 @@ extra-source-files:  CHANGELOG.adoc,
                      README.adoc
 
 library
-  exposed-modules:     Text.Asciidoc.Inlines
+  exposed-modules:     Text.AsciiDoc.Inlines
   -- other-modules:
-  -- other-extensions:
   build-depends:       base ^>= 4.14.0.0,
                        parsec == 3.1.*,
                        parser-combinators == 1.2.*,
                        text == 1.2.*       
   hs-source-dirs:      src
   default-language:    Haskell2010
-  extensions:          OverloadedStrings
+  default-extensions:  OverloadedStrings
+  -- other-extensions:
   ghc-options:         -Wall
 
 executable asciidoc-hs
   main-is:             Main.hs
   -- other-modules:
-  -- other-extensions:
   build-depends:       asciidoc-hs,
                        base ^>= 4.14.0.0,
                        text == 1.2.*       
   hs-source-dirs:      exe
   default-language:    Haskell2010
-  extensions:          OverloadedStrings
+  default-extensions:  OverloadedStrings
+  -- other-extensions:
   ghc-options:         -Wall
 
 test-suite asciidoc-hs-test

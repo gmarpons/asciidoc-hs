@@ -1,5 +1,5 @@
 -- |
--- Module      :  Text.Asciidoc.Inlines
+-- Module      :  Text.AsciiDoc.Inlines
 -- Copyright   :  © 2020–present Guillem Marpons
 -- License     :  BSD-3-Clause
 --
@@ -7,10 +7,10 @@
 -- Stability   :  experimental
 -- Portability :  portable
 --
--- This module contains Parsec-style parsers for Asciidoc inline elements.
+-- This module contains Parsec-style parsers for AsciiDoc inline elements.
 --
 -- It tries to be compatible with Asciidoctor.
-module Text.Asciidoc.Inlines
+module Text.AsciiDoc.Inlines
   ( pInlines,
     parseTestInlines,
   )
