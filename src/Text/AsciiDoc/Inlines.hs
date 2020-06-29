@@ -322,10 +322,10 @@ pSpaces =
     <$> some pSpace
 
 pSpace :: Parser Char
-pSpace = Parsec.satisfy isAsciidocSpace
+pSpace = Parsec.satisfy isAsciiDocSpace
 
-isAsciidocSpace :: Char -> Bool
-isAsciidocSpace c = isSpace c && c /= '\n'
+isAsciiDocSpace :: Char -> Bool
+isAsciiDocSpace c = isSpace c && c /= '\n'
 
 parseTestInlines :: String -> Text -> IO ()
 parseTestInlines label text = do
