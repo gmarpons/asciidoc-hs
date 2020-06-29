@@ -1,5 +1,18 @@
+-- |
+-- Module      :  Text.Asciidoc.Inlines
+-- Copyright   :  © 2020–present Guillem Marpons
+-- License     :  BSD-3-Clause
+--
+-- Maintainer  :  Guillem Marpons <gmarpons@mailbox.org>
+-- Stability   :  experimental
+-- Portability :  portable
+--
+-- This module contains Parsec-style parsers for Asciidoc inline elements.
+--
+-- It tries to be compatible with Asciidoctor.
 module Text.Asciidoc.Inlines
-  ( parseTestInline,
+  ( pInlines,
+    parseTestInlines,
   )
 where
 
@@ -11,176 +24,117 @@ import Control.Monad.Combinators hiding
     someTill,
   )
 import Control.Monad.Combinators.NonEmpty
-import Data.Char
+import Data.Bifunctor
+import Data.Char hiding (Space)
+import Data.List.NonEmpty ((<|), NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text as T
-import Text.Parsec (Parsec, notFollowedBy, parseTest)
-import Text.Parsec.Char (char, oneOf, satisfy, string)
+import qualified Text.Parsec as Parsec
+  ( Parsec,
+    eof,
+    notFollowedBy,
+    parseTest,
+  )
+import qualified Text.Parsec.Char as Parsec
+  ( char,
+    oneOf,
+    satisfy,
+    string,
+  )
 
-type Parser = Parsec Text ()
+type Parser = Parsec.Parsec Text ()
 
 data Inline
-  = LineBreak
-  | SoftBreak
-  | Space
+  = Space
   | Str Text
   | Strong Inlines
+  | Symbol Text
   deriving (Eq, Show)
 
 type Inlines = [Inline]
 
-pInline :: Parser Inline
-pInline = pure $ Str "Hello World!"
-
--- Parsing rules copied from
--- https://github.com/Mogztter/asciidoctor-inline-parser/blob/master/lib/asciidoctor/inline_parser/asciidoctor_grammar.treetop.
-
---  rule text
---    (quoted)* <Text>
---  end
-
---  rule quoted
---    (
---      escaped_passthrough_inline_macro / escaped_quoted_symbol / escaped_role_symbol / escaped_explicit_email / escaped_implicit_email /
---      image /
---      kbd / btn / menu /
---      passthrough_inline_macro / passthrough_triple_plus /
---      double_curved_quotes / single_curved_quotes /
---      literal /
---      explicit_link / explicit_link_protected / implicit_link /
---      explicit_email / implicit_email /
---      unconstrained_strong / unconstrained_emphasis / unconstrained_monospaced / unconstrained_mark /
---      strong / emphasis / monospaced / mark / superscript / subscript /
---      ' ' / word / symbol
---    )+ <Expression>
---  end
-
---  rule double_curved_quotes
---    '"`' double_curved_quotes_content '`"' <DoubleCurvedQuoted>
---  end
-
---  rule double_curved_quotes_content
---    [^`"]+ <QuotedContent>
---  end
-
---  rule single_curved_quotes
---    '\'`' single_curved_quotes_content '`\'' <SingleCurvedQuoted>
---  end
-
---  rule single_curved_quotes_content
---    [^`\']+ <QuotedContent>
---  end
-
---  rule literal
---    '+' (!spaces) literal_content (!spaces) '+' <Literal>
---  end
-
---  rule literal_content
---    [^+]+ <QuotedContent>
---  end
-
---  rule strong
---    quoted_text_attrs? '*' (!spaces) strong_content (!spaces) '*' (!constrained_mark_exception_end) <StrongQuoted>
---  end
-
---  rule unconstrained_strong
---    quoted_text_attrs? '**' strong_content '**' <StrongQuoted>
---  end
-
---  rule strong_content
---    (strong_content_greedy)+ <QuotedContent>
---  end
-
---  rule strong_content_greedy
---    ( [^*] / '*' constrained_mark_exception )
---  end
-
---  rule emphasis
---    quoted_text_attrs? '_' (!spaces) emphasis_content (!spaces) '_' (!constrained_mark_exception_end) <EmphasisQuoted>
---  end
-
---  rule unconstrained_emphasis
---    quoted_text_attrs? '__' emphasis_content '__' <EmphasisQuoted>
---  end
-
---  rule emphasis_content
---    (emphasis_content_greedy)+ <QuotedContent>
---  end
-
---  rule emphasis_content_greedy
---    ( [^_] / '_' constrained_mark_exception )
---  end
-
---  rule monospaced
---    quoted_text_attrs? '`' (!spaces) monospaced_content (!spaces) '`' (!constrained_mark_exception_end) <MonospacedQuoted>
---  end
-
---  rule unconstrained_monospaced
---    quoted_text_attrs? '``' monospaced_content '``' <MonospacedQuoted>
---  end
-
---  rule monospaced_content
---    (monospaced_content_greedy)+ <QuotedContent>
---  end
-
---  rule monospaced_content_greedy
---    ( [^`] / '`' constrained_mark_exception )
---  end
-
---  rule mark
---    quoted_text_attrs? '#' (!spaces) mark_content (!spaces) '#' (!constrained_mark_exception_end) <MarkQuoted>
---  end
-
---  rule unconstrained_mark
---    quoted_text_attrs? '##' mark_content '##' <MarkQuoted>
---  end
-
---  rule mark_content
---    (mark_content_greedy)+ <QuotedContent>
---  end
-
---  rule mark_content_greedy
---    ( [^#] / '#' constrained_mark_exception )
---  end
-
---  rule superscript
---    '^' (!spaces) superscript_content (!spaces) '^' <SuperscriptQuoted>
---  end
-
---  rule superscript_content
---    [^\^]+ <QuotedContent>
---  end
-
---  rule subscript
---    '~' (!spaces) subscript_content (!spaces) '~' <SubscriptQuoted>
---  end
-
---  rule subscript_content
---    [^~]+ <QuotedContent>
---  end
-
-newtype SubscriptQuoted = SubscriptQuoted {unSubscriptQuoted :: Text}
-
-pSubscript :: Parser (Text, SubscriptQuoted, Text)
-pSubscript =
-  (,,)
-    <$> pQuoteChar <* notFollowedBy pSpace <*> pContent <*> pQuoteChar
+pInlines :: Parser (NE.NonEmpty Inline)
+pInlines =
+  postProcessQuote <$> pTentativeQuote <*> pPostQuote
+    <|> (:|) <$> pStr <*> pPostStr
   where
-    pQuoteChar = T.singleton <$> char '~'
-    -- FIXME: pContent should accept spaces and parse inner mark-up.
-    pContent =
-      SubscriptQuoted . T.pack . NE.toList
-        <$> some (satisfy (\c -> c /= '~' && not (isAsciidocSpace c)))
+    pInlines' = NE.toList <$> pInlines
+    pPostQuote :: Parser Inlines
+    pPostQuote =
+      pInlines'
+        <|> [] <$ Parsec.eof
+    pPostStr :: Parser Inlines
+    pPostStr =
+      (:) <$> pSpaces' <*> pPostPostStr
+        <|> (:) <$> pDelimiter' <*> pPostDelimiter
+        <|> [] <$ Parsec.eof
+    pPostPostStr =
+      pInlines'
+        <|> [] <$ Parsec.eof
+    pSpaces' = Space <$ pSpaces
+    pDelimiter' = Symbol . T.singleton <$> pDelimiter
+    pPostDelimiter =
+      (:) <$> pSpaces' <*> pInlines'
+        <|> (:) <$> pStr <*> pPostStr
 
---  rule quoted_text_attrs
---    '[' quoted_text_attrs_content ']' <QuotedTextAttributes>
---  end
+postProcessQuote :: Either Inlines Inlines -> Inlines -> NE.NonEmpty Inline
+postProcessQuote (Left ts) us = NE.fromList $ ts <> us
+postProcessQuote (Right (Symbol "*" : ts)) us = removeDelim (reverse ts)
+  where
+    removeDelim (Symbol "*" : ts') = Strong (reverse ts') :| us
+    removeDelim (Space : Symbol "*" : ts') = Strong (reverse ts') <| Space :| us
+    removeDelim _ = error "postProcessQuote: unexpected Strong ending"
+postProcessQuote _ _ = error "postProcessQuote: unexpected Strong beginning"
 
---  rule quoted_text_attrs_content
---    ( quoted_text_anchor / quoted_text_role )* <QuotedTextAttributesContent>
---  end
+pTentativeQuote :: Parser (Either Inlines Inlines)
+pTentativeQuote =
+  (\t -> bimap (t :) (t :))
+    <$> pDelimiter' <* Parsec.notFollowedBy pDelimiter <*> pPostQuoteOpening
+  where
+    pPostQuoteOpening =
+      Left [Space] <$ pSpaces
+        <|> pQuoteContinuation
+    pDelimiter' = Symbol . T.singleton <$> pDelimiter
 
+pQuoteContinuation :: Parser (Either Inlines Inlines)
+pQuoteContinuation =
+  (\t -> bimap (t :) (t :)) <$> pStr <*> pQuoteContinuation'
+    <|> (\t -> bimap (t :) (t :))
+      <$> pDelimiter' <* Parsec.notFollowedBy pDelimiter <*> pQuoteContinuation''
+    <|> Left [] <$ Parsec.eof
+  where
+    pQuoteContinuation' :: Parser (Either Inlines Inlines)
+    pQuoteContinuation' =
+      (\t -> bimap (t :) (t :)) <$> pDelimiter' <*> pPostDelim
+        <|> (\t -> bimap (t :) (t :)) <$> pSpaces' <*> pQuoteContinuation
+        <|> Left [] <$ Parsec.eof
+    pQuoteContinuation'' =
+      (\mt -> maybe id (\t -> bimap (t :) (t :)) mt)
+        <$> optional pSpaces' <*> pQuoteContinuation
+    pSpaces' = Space <$ pSpaces
+    pDelimiter' = Symbol . T.singleton <$> pDelimiter
+    pPostDelim :: Parser (Either Inlines Inlines)
+    pPostDelim =
+      Right [Space] <$ pSpaces -- TODO: to simplify post processing, use try and return Right []
+        <|> Right [] <$ Parsec.eof
+        <|> pQuoteContinuation
+
+-- An example delimiter. TODO: generalize to any quote delimiter.
+pDelimiter :: Parser Char
+pDelimiter = Parsec.char '*'
+
+pStr :: Parser Inline
+pStr =
+  Str . T.pack . NE.toList
+    <$> some pStrChar
+  where
+    pStrChar = Parsec.satisfy $ \c ->
+      isAlphaNum c
+
+-- We try to follow rules in
+-- https://github.com/Mogztter/asciidoctor-inline-parser/blob/master/lib/asciidoctor/inline_parser/asciidoctor_grammar.treetop
+-- in some of the following definitions.
 data Attribute
   = Role RoleIdentifier
   | Anchor AnchorIdentifier
@@ -189,19 +143,18 @@ newtype QuotedTextAttributes = QuotedTextAttributes
   { unQuotedTextAttributes :: [Attribute]
   }
 
-pQuotedTextAttributes :: Parser (Text, QuotedTextAttributes, Text)
+pQuotedTextAttributes :: Parser QuotedTextAttributes
 pQuotedTextAttributes =
-  (,,)
-    <$> pOpen <*> p <*> pClose
+  pOpen *> p <* pClose
   where
     p = QuotedTextAttributes <$> many pAttribute
-    pOpen = T.singleton <$> char '['
-    pClose = T.singleton <$> char ']'
+    pOpen = T.singleton <$> Parsec.char '['
+    pClose = T.singleton <$> Parsec.char ']'
     pAttribute =
       pRole
         <|> pAnchor
-    pRole = Role . snd <$> pQuotedTextRole
-    pAnchor = Anchor . snd <$> pQuotedTextAnchor
+    pRole = Role <$> pQuotedTextRole
+    pAnchor = Anchor <$> pQuotedTextAnchor
 
 --  rule quoted_text_role
 --    '.' role_identifier <QuotedTextRole>
@@ -211,16 +164,17 @@ pQuotedTextAttributes =
 --    '#' anchor_identifier <QuotedTextAnchor>
 --  end
 
-pQuotedTextRole :: Parser (Text, RoleIdentifier)
+pQuotedTextRole :: Parser RoleIdentifier
 pQuotedTextRole =
-  (,) <$> (T.singleton <$> char '.') <*> pRoleIdentifier
+  Parsec.char '.' *> pRoleIdentifier
 
-pQuotedTextAnchor :: Parser (Text, AnchorIdentifier)
+pQuotedTextAnchor :: Parser AnchorIdentifier
 pQuotedTextAnchor =
-  (,) <$> (T.singleton <$> char '#') <*> pAnchorIdentifier
+  Parsec.char '#' *> pAnchorIdentifier
 
--- TODO: constrained_mark_exception
---
+-- NOTE: We include '_' (Low line, U+005F) as part of
+-- pCharThatCannotFollowConstrainedQuote
+
 --  rule constrained_mark_exception_end
 --    ( constrained_mark_exception )
 --  end
@@ -228,6 +182,15 @@ pQuotedTextAnchor =
 --  rule constrained_mark_exception
 --    '[\p{Word}&&[^_]]'r
 --  end
+
+pCharThatCannotFollowConstrainedQuote :: Parser Char
+pCharThatCannotFollowConstrainedQuote =
+  Parsec.satisfy $ \c ->
+    isAlphaNum c || generalCategory c
+      `elem` [ ConnectorPunctuation,
+               SpacingCombiningMark,
+               EnclosingMark
+             ]
 
 --  rule escaped_quoted_symbol
 --    ( '\*' / '\_' / '\`' / '\#' / '\^' / '\~' )
@@ -238,8 +201,8 @@ pEscapedQuotedSymbol =
   (<>)
     <$> pBackslash <*> pQuotedSymbol
   where
-    pBackslash = T.singleton <$> char '\\'
-    pQuotedSymbol = T.singleton <$> oneOf (NE.toList quotedSymbols)
+    pBackslash = T.singleton <$> Parsec.char '\\'
+    pQuotedSymbol = T.singleton <$> Parsec.oneOf (NE.toList quotedSymbols)
 
 --  rule escaped_role_symbol
 --    ( '\[' )
@@ -248,7 +211,7 @@ pEscapedQuotedSymbol =
 pEscapedRoleSymbol :: Parser Text
 pEscapedRoleSymbol =
   T.pack
-    <$> string "\\["
+    <$> Parsec.string "\\["
 
 --  rule symbol
 --    ( symbol_basic / quoted_symbol )
@@ -268,7 +231,7 @@ pSymbol =
     <|> pQuotedSymbols
 
 pBasicSymbol :: Parser Char
-pBasicSymbol = oneOf $ NE.toList basicSymbols
+pBasicSymbol = Parsec.oneOf $ NE.toList basicSymbols
 
 basicSymbols :: NE.NonEmpty Char
 basicSymbols =
@@ -300,7 +263,7 @@ pQuotedSymbols =
   T.pack . NE.toList
     <$> some pQuotedSymbol
   where
-    pQuotedSymbol = oneOf (NE.toList quotedSymbols)
+    pQuotedSymbol = Parsec.oneOf (NE.toList quotedSymbols)
 
 quotedSymbols :: NE.NonEmpty Char
 quotedSymbols =
@@ -340,47 +303,34 @@ pAnchorIdentifier =
 --  end
 
 pIdentifierChar :: Parser Char
-pIdentifierChar = satisfy isIdentifierChar
+pIdentifierChar = Parsec.satisfy isIdentifierChar
   where
     isIdentifierChar c = isAlphaNum c || c == '_' || c == '-'
 
---  rule word
---    alnum
---  end
-
---  rule number
---    [0-9]+
---  end
-
---  rule alpha
---    [a-zA-Z]+ # FIXME: should include all unicode characters ?
---  end
-
---  rule alnum
---    ( number / alpha )
---  end
-
--- NOTE: We include in pSpaces any space character that is not a newline.
---
---  rule spaces
---    [ ]+
---  end
-
--- | Like @spaces@, but with the following differences:
+-- | Like @Text.Parsec.Char.spaces@, but with the following differences:
 --
 --     * It returns the parsed characters.
 --
 --     * Newlines are not considered space.
+--
+-- It's also different from rules found in
+-- https://github.com/Mogztter/asciidoctor-inline-parser/blob/master/lib/asciidoctor/inline_parser/asciidoctor_grammar.treetop
+-- in that we include in @pSpaces@ any space character that is not a newline.
 pSpaces :: Parser Text
 pSpaces =
   T.pack . NE.toList
     <$> some pSpace
 
 pSpace :: Parser Char
-pSpace = satisfy isAsciidocSpace
+pSpace = Parsec.satisfy isAsciidocSpace
 
 isAsciidocSpace :: Char -> Bool
 isAsciidocSpace c = isSpace c && c /= '\n'
 
-parseTestInline :: Text -> IO ()
-parseTestInline = parseTest pInline
+parseTestInlines :: String -> Text -> IO ()
+parseTestInlines label text = do
+  putStrLn "=========="
+  putStrLn $ label <> ":"
+  Parsec.parseTest pInlines text
+  putStrLn "=========="
+  putStrLn ""
