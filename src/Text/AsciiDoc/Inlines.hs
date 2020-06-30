@@ -54,7 +54,7 @@ data Inline
 
 type Inlines = [Inline]
 
-pInlines :: Parser (NE.NonEmpty Inline)
+pInlines :: Parser (NonEmpty Inline)
 pInlines =
   postProcessQuote <$> pTentativeQuote <*> pPostQuote
     <|> (:|) <$> pStr <*> pPostStr
@@ -78,18 +78,21 @@ pInlines =
       (:) <$> pSpaces' <*> pInlines'
         <|> (:) <$> pStr <*> pPostStr
 
-postProcessQuote :: Either Inlines Inlines -> Inlines -> NE.NonEmpty Inline
-postProcessQuote (Left ts) us = NE.fromList $ ts <> us
-postProcessQuote (Right (Symbol "*" : ts)) us = removeDelim (reverse ts)
+postProcessQuote ::
+  Either (NonEmpty Inline) (NonEmpty Inline) ->
+  Inlines ->
+  NE.NonEmpty Inline
+postProcessQuote (Left (t :| ts)) us = t :| ts <> us
+postProcessQuote (Right (Symbol "*" :| ts)) us = removeDelim (reverse ts)
   where
     removeDelim (Symbol "*" : ts') = Strong (reverse ts') :| us
     removeDelim (Space : Symbol "*" : ts') = Strong (reverse ts') <| Space :| us
     removeDelim _ = error "postProcessQuote: unexpected Strong ending"
 postProcessQuote _ _ = error "postProcessQuote: unexpected Strong beginning"
 
-pTentativeQuote :: Parser (Either Inlines Inlines)
+pTentativeQuote :: Parser (Either (NonEmpty Inline) (NonEmpty Inline))
 pTentativeQuote =
-  (\t -> bimap (t :) (t :))
+  (\t -> bimap (t :|) (t :|))
     <$> pDelimiter' <* Parsec.notFollowedBy pDelimiter <*> pPostQuoteOpening
   where
     pPostQuoteOpening =
@@ -235,28 +238,27 @@ pBasicSymbol = Parsec.oneOf $ NE.toList basicSymbols
 
 basicSymbols :: NE.NonEmpty Char
 basicSymbols =
-  NE.fromList
-    [ '&',
-      '-',
-      ':',
-      ';',
-      '=',
-      ',',
-      '"',
-      '\'',
-      '.',
-      '!',
-      '\\',
-      '{',
-      '}',
-      ']',
-      '[',
-      '<',
-      '>',
-      '/',
-      '(',
-      ')'
-    ]
+  '!'
+    :| [ '"',
+         '&',
+         '\'',
+         '(',
+         ')',
+         ',',
+         '-',
+         '.',
+         '/',
+         ':',
+         ';',
+         '<',
+         '=',
+         '>',
+         '[',
+         '\\',
+         ']',
+         '{',
+         '}'
+       ]
 
 pQuotedSymbols :: Parser Text
 pQuotedSymbols =
@@ -267,14 +269,13 @@ pQuotedSymbols =
 
 quotedSymbols :: NE.NonEmpty Char
 quotedSymbols =
-  NE.fromList
-    [ '_',
-      '*',
-      '#',
-      '`',
-      '^',
-      '~'
-    ]
+  '#'
+    :| [ '*',
+         '^',
+         '_',
+         '`',
+         '~'
+       ]
 
 --  rule role_identifier
 --    identifier+ <RoleIdentifier>
