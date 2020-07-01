@@ -11,7 +11,9 @@
 --
 -- It tries to be compatible with Asciidoctor.
 module Text.AsciiDoc.Inlines
-  ( pInlines,
+  ( Inline (..),
+    Inlines,
+    pInlines,
     parseTestInlines,
   )
 where

@@ -16,33 +16,39 @@ extra-source-files:  CHANGELOG.adoc,
                      README.adoc
 
 library
+  hs-source-dirs:      src
   exposed-modules:     Text.AsciiDoc.Inlines
   -- other-modules:
   build-depends:       base ^>= 4.14.0.0,
                        parsec == 3.1.*,
                        parser-combinators == 1.2.*,
                        text == 1.2.*       
-  hs-source-dirs:      src
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings
   -- other-extensions:
   ghc-options:         -Wall
 
 executable asciidoc-hs
+  hs-source-dirs:      exe
   main-is:             Main.hs
   -- other-modules:
   build-depends:       asciidoc-hs,
                        base ^>= 4.14.0.0,
                        text == 1.2.*       
-  hs-source-dirs:      exe
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings
   -- other-extensions:
   ghc-options:         -Wall
 
 test-suite asciidoc-hs-test
-  default-language:    Haskell2010
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
-  main-is:             MyLibTest.hs
-  build-depends:       base ^>= 4.14.0.0
+  main-is:             Tests/InlineTests.hs
+  build-depends:       asciidoc-hs,
+                       base ^>= 4.14.0.0,
+                       parsec == 3.1.*,
+                       tasty,
+                       tasty-hunit
+  default-language:    Haskell2010
+  default-extensions:  OverloadedStrings
+  -- ghc-options:         -Wall
