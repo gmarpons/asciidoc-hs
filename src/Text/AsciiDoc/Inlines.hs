@@ -1,5 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-
 -- |
 -- Module      :  Text.AsciiDoc.Inlines
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -9,13 +7,15 @@
 -- Stability   :  experimental
 -- Portability :  portable
 --
--- This module contains Parsec-style parsers for AsciiDoc inline elements.
+-- Parsec-style parsers for AsciiDoc inline elements.
 --
 -- It tries to be compatible with Asciidoctor.
 module Text.AsciiDoc.Inlines
   ( Inline (..),
-    Inlines,
     pInlines,
+    pBoldText,
+    pItalicText,
+    pMonospaceText,
   )
 where
 
@@ -56,11 +56,11 @@ data Inline
   = Space
   | Word Text
   | Bold (NonEmpty Inline)
+  | Italic (NonEmpty Inline)
+  | Monospace (NonEmpty Inline)
   | Symbol Char
   | Fallback Text
   deriving (Eq, Show)
-
-type Inlines = [Inline]
 
 pInlines :: Parser (NonEmpty Inline)
 pInlines = some pInlineElement
@@ -124,12 +124,46 @@ pInlineElement =
     </> pNot pEol *> pInlineElement'
   where
     pInlineElement' =
-      pBoldText
+      pAnyQuotedText
         -- NOTE. Special case, not present in PEG above, to possibly treat some
         -- characters in a different way of general fallback.
         </> Fallback . T.singleton
           <$> Parsec.oneOf (NE.toList constrainedQuotedTextMarkers)
         </> Fallback . T.singleton <$> pAnyChar
+
+-- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1085
+--
+-- QuotedText <- UnconstrainedQuotedText / ConstrainedQuotedText / EscapedQuotedText
+
+-- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1101
+--
+-- UnconstrainedQuotedText <- DoubleQuoteBoldText
+--             / DoubleQuoteItalicText
+--             / DoubleQuoteMarkedText
+--             / DoubleQuoteMonospaceText
+
+-- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1091
+--
+-- ConstrainedQuotedText <- text:(SingleQuoteBoldText
+--             / SingleQuoteItalicText
+--             / SingleQuoteMarkedText
+--             / SingleQuoteMonospaceText
+--             / SubscriptText
+--             / SuperscriptText
+--             / SubscriptOrSuperscriptPrefix) { // if a '^' or '~' is alone (ie, badly formatted superscript or subscript, then accept it as-is)
+--     return text, nil
+-- }
+
+pAnyQuotedText :: Parser Inline
+pAnyQuotedText =
+  pQuotedText (MkQuoteType Bold '*')
+    <|> pQuotedText (MkQuoteType Italic '_')
+    <|> pQuotedText (MkQuoteType Monospace '`')
+
+data QuoteType = MkQuoteType
+  { ctor :: NonEmpty Inline -> Inline,
+    char :: Char
+  }
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1129
 --
@@ -137,8 +171,20 @@ pInlineElement =
 
 pBoldText :: Parser Inline
 pBoldText =
-  pDoubleQuoteBoldText
-    </> pSingleQuoteBoldText
+  pQuotedText (MkQuoteType Bold '*')
+
+pItalicText :: Parser Inline
+pItalicText =
+  pQuotedText (MkQuoteType Italic '_')
+
+pMonospaceText :: Parser Inline
+pMonospaceText =
+  pQuotedText (MkQuoteType Monospace '`')
+
+pQuotedText :: QuoteType -> Parser Inline
+pQuotedText qt =
+  pDoubleQuotedText qt
+    </> pSingleQuotedText qt
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1131
 --
@@ -146,20 +192,20 @@ pBoldText =
 --     return types.NewQuotedText(types.Bold, attrs, elements.([]interface{}))
 -- }
 
-pDoubleQuoteBoldText :: Parser Inline
-pDoubleQuoteBoldText =
+pDoubleQuotedText :: QuoteType -> Parser Inline
+pDoubleQuotedText qt =
   -- TODO: optional pQuotedTextAttrs
-  Bold
-    <$ pDelimiter <*> pDoubleQuoteBoldTextElements <* pDelimiter
+  ctor qt
+    <$ pDelimiter <*> pDoubleQuotedTextElements qt <* pDelimiter
   where
-    pDelimiter = () <$ Parsec.string "**"
+    pDelimiter = () <$ Parsec.string (char qt : char qt : [])
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1135
 --
 -- DoubleQuoteBoldTextElements <- DoubleQuoteBoldTextElement (!("**") (Space / DoubleQuoteBoldTextElement))*  // may start and end with spaces
 
-pDoubleQuoteBoldTextElements :: Parser (NonEmpty Inline)
-pDoubleQuoteBoldTextElements =
+pDoubleQuotedTextElements :: QuoteType -> Parser (NonEmpty Inline)
+pDoubleQuotedTextElements qt =
   (:|)
     -- NOTE. Diverges from above PEG rule: spaces are parsed as such at the
     -- beginning of the inline, and not as fallback characters.
@@ -170,8 +216,8 @@ pDoubleQuoteBoldTextElements =
       -- NOTE. diverges from above PEG rule: multiple spaces can be parsed as
       -- one single inline.
       Space <$ pSpaces
-        <|> pDoubleQuoteBoldTextElement
-    pDelimiter = () <$ Parsec.string "**"
+        <|> pDoubleQuotedTextElement qt
+    pDelimiter = () <$ Parsec.string (char qt : char qt : [])
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1137
 --
@@ -193,11 +239,12 @@ pDoubleQuoteBoldTextElements =
 --         / ImpliedApostrophe
 --         / DoubleQuoteBoldTextFallbackCharacter
 
-pDoubleQuoteBoldTextElement :: Parser Inline
-pDoubleQuoteBoldTextElement =
+pDoubleQuotedTextElement :: QuoteType -> Parser Inline
+pDoubleQuotedTextElement qt =
   Word <$> pAlphaNums -- TODO: pWord in PEG rule above
-    </> pSingleQuoteBoldText
-    </> pDoubleQuoteBoldTextFallbackCharacter
+    </> pSingleQuotedText qt
+    </> pNot (Parsec.char (char qt)) *> pAnyQuotedText
+    </> pDoubleQuotedTextFallbackCharacter qt
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1156
 --
@@ -207,14 +254,14 @@ pDoubleQuoteBoldTextElement =
 --     return types.NewStringElement(string(c.text))
 -- }
 
-pDoubleQuoteBoldTextFallbackCharacter :: Parser Inline
-pDoubleQuoteBoldTextFallbackCharacter =
+pDoubleQuotedTextFallbackCharacter :: QuoteType -> Parser Inline
+pDoubleQuotedTextFallbackCharacter qt =
   Fallback <$> p
   where
     p =
-      T.singleton <$> Parsec.noneOf "\r\n*"
+      T.singleton <$> Parsec.noneOf ("\r\n" <> [char qt])
         <|> (<>) <$> pDelimiter <*> pAlphaNums
-    pDelimiter = T.pack <$> Parsec.string "**"
+    pDelimiter = T.pack <$> Parsec.string (char qt : char qt : [])
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1162
 --
@@ -224,35 +271,35 @@ pDoubleQuoteBoldTextFallbackCharacter =
 --     return types.NewQuotedText(types.Bold, attrs, elements.([]interface{})) // include the second heading `*` as a regular StringElement in the bold content
 -- }
 
-pSingleQuoteBoldText :: Parser Inline
-pSingleQuoteBoldText =
+pSingleQuotedText :: QuoteType -> Parser Inline
+pSingleQuotedText qt =
   -- TODO: optional pQuotedTextAttrs
-  Bold <$ (pDelimiter <* pNot pDelimiter) <*> pSingleQuoteBoldTextElements <* p
+  ctor qt <$ (pDelimiter <* pNot pDelimiter) <*> pSingleQuotedTextElements qt <* p
     -- NOTE. Diverges from PEG rule above: we add 'p' to the end of the
     -- following case.
-    </> Bold <$ pDelimiter <*> q <* p
+    </> ctor qt <$ pDelimiter <*> q <* p
   where
     p = pDelimiter <* pAnd (pNot pAlphaNums)
-    q = (<|) <$> pDelimiter' <*> pSingleQuoteBoldTextElements
-    pDelimiter = () <$ Parsec.char '*'
-    pDelimiter' = Fallback . T.singleton <$> Parsec.char '*'
+    q = (<|) <$> pDelimiter' <*> pSingleQuotedTextElements qt
+    pDelimiter = () <$ Parsec.char (char qt)
+    pDelimiter' = Fallback . T.singleton <$> Parsec.char (char qt)
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1168
 --
 -- SingleQuoteBoldTextElements <- !Space SingleQuoteBoldTextElement+
 
-pSingleQuoteBoldTextElements :: Parser (NonEmpty Inline)
-pSingleQuoteBoldTextElements =
-  (:|) <$ pNot pSpace <*> pSingleQuoteBoldTextElement <*> p
+pSingleQuotedTextElements :: QuoteType -> Parser (NonEmpty Inline)
+pSingleQuotedTextElements qt =
+  (:|) <$ pNot pSpace <*> pSingleQuotedTextElement qt <*> p
   where
     p = concat <$> many p'
     p' =
       r
         </> (:) <$> pSpaces' <*> q
     q = maybe [] (: []) <$> optional (pDelimiter <* pNot pDelimiter) -- TODO: maybe
-    r = (: []) <$ pNot pSpace <*> pSingleQuoteBoldTextElement
+    r = (: []) <$ pNot pSpace <*> pSingleQuotedTextElement qt
     pSpaces' = Space <$ pSpaces
-    pDelimiter = Fallback . T.singleton <$> Parsec.char '*'
+    pDelimiter = Fallback . T.singleton <$> Parsec.char (char qt)
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1170
 --
@@ -275,14 +322,15 @@ pSingleQuoteBoldTextElements =
 --         / ImpliedApostrophe
 --         / SingleQuoteBoldTextFallbackCharacter
 
-pSingleQuoteBoldTextElement :: Parser Inline
-pSingleQuoteBoldTextElement =
+pSingleQuotedTextElement :: QuoteType -> Parser Inline
+pSingleQuotedTextElement qt =
   Word <$> pAlphaNums -- TODO: pWord in PEG rule above
-    </> pDoubleQuoteBoldText
+    </> pDoubleQuotedText qt
+    </> pNot (Parsec.char (char qt)) *> pAnyQuotedText
     -- NOTE. Diverges from PEG rule above: missing disjunction of spaces
     -- followed by '*' because we've handled this case in
     -- pSingleQuoteBoldTextElements.
-    </> pSingleQuoteBoldTextFallbackCharacter
+    </> pSingleQuotedTextFallbackCharacter qt
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L1189
 --
@@ -292,14 +340,14 @@ pSingleQuoteBoldTextElement =
 --     return types.NewStringElement(string(c.text))
 -- }
 
-pSingleQuoteBoldTextFallbackCharacter :: Parser Inline
-pSingleQuoteBoldTextFallbackCharacter =
+pSingleQuotedTextFallbackCharacter :: QuoteType -> Parser Inline
+pSingleQuotedTextFallbackCharacter qt =
   Fallback <$> p
   where
     p =
-      T.singleton <$> Parsec.noneOf "\r\n*"
+      T.singleton <$> Parsec.noneOf ("\r\n" <> [char qt])
         <|> (<>) <$> pDelimiter <*> pAlphaNums
-    pDelimiter = T.pack <$> Parsec.string "*"
+    pDelimiter = T.pack <$> Parsec.string [char qt]
 
 -- https://github.com/bytesparadise/libasciidoc/blob/04f2a1d9e3e16deb9bf3630184190cd2ea51557b/pkg/parser/parser.peg#L2059
 --
