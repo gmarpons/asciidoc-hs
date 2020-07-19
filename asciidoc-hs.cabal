@@ -12,7 +12,7 @@ author:              Guillem Marpons
 maintainer:          gmarpons@mailbox.org
 copyright:           Guillem Marpons 2020
 category:            Text
-extra-source-files:  CHANGELOG.adoc, 
+extra-source-files:  CHANGELOG.adoc,
                      README.adoc
 
 library
@@ -24,11 +24,20 @@ library
                        pandoc-types == 1.21.*,
                        parsec == 3.1.*,
                        parser-combinators == 1.2.*,
-                       text == 1.2.*       
+                       text == 1.2.*
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings
   -- other-extensions:
   ghc-options:         -Wall
+                       -Wincomplete-uni-patterns
+                       -Wincomplete-record-updates
+                       -Wcompat
+                       -Widentities
+                       -Wredundant-constraints
+                       -Wmissing-export-lists
+                       -Wpartial-fields
+                       -fhide-source-paths
+                       -freverse-errors
 
 executable asciidoc-hs
   hs-source-dirs:      exe
@@ -38,11 +47,20 @@ executable asciidoc-hs
                        aeson == 1.5.*,
                        base ^>= 4.14.0.0,
                        parsec == 3.1.*,
-                       text == 1.2.*       
+                       text == 1.2.*
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings
   -- other-extensions:
   ghc-options:         -Wall
+                       -Wincomplete-uni-patterns
+                       -Wincomplete-record-updates
+                       -Wcompat
+                       -Widentities
+                       -Wredundant-constraints
+                       -Wmissing-export-lists
+                       -Wpartial-fields
+                       -fhide-source-paths
+                       -freverse-errors
 
 test-suite asciidoc-hs-test
   type:                exitcode-stdio-1.0
@@ -56,4 +74,4 @@ test-suite asciidoc-hs-test
                        tasty-hunit
   default-language:    Haskell2010
   default-extensions:  OverloadedStrings
-  -- ghc-options:         -Wall
+  ghc-options:         -Wall
