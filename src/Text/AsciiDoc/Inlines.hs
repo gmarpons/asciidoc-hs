@@ -49,7 +49,7 @@ type Parser = Parsec.Parsec Text ()
 
 data Inline
   = Space
-  | Str Text
+  | Word Text
   | Strong Inlines
   | Symbol Text
   deriving (Eq, Show)
@@ -59,26 +59,26 @@ type Inlines = [Inline]
 pInlines :: Parser (NonEmpty Inline)
 pInlines =
   postProcessQuote <$> pTentativeQuote <*> pPostQuote
-    <|> (:|) <$> pStr <*> pPostStr
+    <|> (:|) <$> pWord <*> pPostWord
   where
     pInlines' = NE.toList <$> pInlines
     pPostQuote :: Parser Inlines
     pPostQuote =
       pInlines'
         <|> [] <$ Parsec.eof
-    pPostStr :: Parser Inlines
-    pPostStr =
-      (:) <$> pSpaces' <*> pPostPostStr
+    pPostWord :: Parser Inlines
+    pPostWord =
+      (:) <$> pSpaces' <*> pPostPostWord
         <|> (:) <$> pDelimiter' <*> pPostDelimiter
         <|> [] <$ Parsec.eof
-    pPostPostStr =
+    pPostPostWord =
       pInlines'
         <|> [] <$ Parsec.eof
     pSpaces' = Space <$ pSpaces
     pDelimiter' = Symbol . T.singleton <$> pDelimiter
     pPostDelimiter =
       (:) <$> pSpaces' <*> pInlines'
-        <|> (:) <$> pStr <*> pPostStr
+        <|> (:) <$> pWord <*> pPostWord
 
 postProcessQuote ::
   Either (NonEmpty Inline) (NonEmpty Inline) ->
@@ -104,7 +104,7 @@ pTentativeQuote =
 
 pQuoteContinuation :: Parser (Either Inlines Inlines)
 pQuoteContinuation =
-  (\t -> bimap (t :) (t :)) <$> pStr <*> pQuoteContinuation'
+  (\t -> bimap (t :) (t :)) <$> pWord <*> pQuoteContinuation'
     <|> (\t -> bimap (t :) (t :))
       <$> pDelimiter' <* Parsec.notFollowedBy pDelimiter <*> pQuoteContinuation''
     <|> Left [] <$ Parsec.eof
@@ -129,12 +129,12 @@ pQuoteContinuation =
 pDelimiter :: Parser Char
 pDelimiter = Parsec.char '*'
 
-pStr :: Parser Inline
-pStr =
-  Str . T.pack . NE.toList
-    <$> some pStrChar
+pWord :: Parser Inline
+pWord =
+  Word . T.pack . NE.toList
+    <$> some pWordChar
   where
-    pStrChar = Parsec.satisfy $ \c ->
+    pWordChar = Parsec.satisfy $ \c ->
       isAlphaNum c
 
 -- We try to follow rules in
