@@ -13,6 +13,7 @@
 module Text.AsciiDoc.Inlines
   ( Inline (..),
     Inlines,
+    QuoteType (..),
     pInlines,
     parseTestInlines,
   )
@@ -47,11 +48,17 @@ import qualified Text.Parsec.Char as Parsec
 
 type Parser = Parsec.Parsec Text ()
 
+data QuoteType
+  = Bold
+  | Italic
+  | Monospace
+  deriving (Eq, Show)
+
 data Inline
   = Space
   | Word Text
-  | Strong Inlines
   | Symbol Text
+  | Quote QuoteType Inlines
   deriving (Eq, Show)
 
 type Inlines = [Inline]
@@ -87,8 +94,8 @@ postProcessQuote ::
 postProcessQuote (Left (t :| ts)) us = t :| ts <> us
 postProcessQuote (Right (Symbol "*" :| ts)) us = removeDelim (reverse ts)
   where
-    removeDelim (Symbol "*" : ts') = Strong (reverse ts') :| us
-    removeDelim (Space : Symbol "*" : ts') = Strong (reverse ts') <| Space :| us
+    removeDelim (Symbol "*" : ts') = Quote Bold (reverse ts') :| us
+    removeDelim (Space : Symbol "*" : ts') = Quote Bold (reverse ts') <| Space :| us
     removeDelim _ = error "postProcessQuote: unexpected Strong ending"
 postProcessQuote _ _ = error "postProcessQuote: unexpected Strong beginning"
 
