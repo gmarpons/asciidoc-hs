@@ -15,7 +15,7 @@ module Text.AsciiDoc.Inlines
     Inlines,
     QuoteType (..),
     pInlines,
-    parseTestInlines,
+    parseTest,
   )
 where
 
@@ -34,10 +34,11 @@ import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Text.Parsec as Parsec
-  ( Parsec,
+  ( ParseError,
+    Parsec,
     eof,
     notFollowedBy,
-    parseTest,
+    runParser,
   )
 import qualified Text.Parsec.Char as Parsec
   ( char,
@@ -46,11 +47,20 @@ import qualified Text.Parsec.Char as Parsec
     string,
   )
 
-type Parser = Parsec.Parsec Text ()
+type Parser = Parsec.Parsec Text State
+
+-- | A stack (LIFO) of descriptors of potential open quoted text blocks. Top of
+-- the stack contains the most recently open block.
+newtype State = State [Quote]
+
+data Quote
+  = Single QuoteType
+  | Double QuoteType
 
 data QuoteType
   = Bold
   | Italic
+  | Mark
   | Monospace
   deriving (Eq, Show)
 
@@ -58,7 +68,7 @@ data Inline
   = Space
   | Word Text
   | Symbol Text
-  | Quote QuoteType Inlines
+  | QuotedText QuoteType Inlines
   deriving (Eq, Show)
 
 type Inlines = [Inline]
@@ -94,8 +104,8 @@ postProcessQuote ::
 postProcessQuote (Left (t :| ts)) us = t :| ts <> us
 postProcessQuote (Right (Symbol "*" :| ts)) us = removeDelim (reverse ts)
   where
-    removeDelim (Symbol "*" : ts') = Quote Bold (reverse ts') :| us
-    removeDelim (Space : Symbol "*" : ts') = Quote Bold (reverse ts') <| Space :| us
+    removeDelim (Symbol "*" : ts') = QuotedText Bold (reverse ts') :| us
+    removeDelim (Space : Symbol "*" : ts') = QuotedText Bold (reverse ts') <| Space :| us
     removeDelim _ = error "postProcessQuote: unexpected Strong ending"
 postProcessQuote _ _ = error "postProcessQuote: unexpected Strong beginning"
 
@@ -337,10 +347,6 @@ pSpace = Parsec.satisfy isAsciiDocSpace
 isAsciiDocSpace :: Char -> Bool
 isAsciiDocSpace c = isSpace c && c /= '\n'
 
-parseTestInlines :: String -> Text -> IO ()
-parseTestInlines label text = do
-  putStrLn "=========="
-  putStrLn $ label <> ":"
-  Parsec.parseTest pInlines text
-  putStrLn "=========="
-  putStrLn ""
+parseTest :: Parser a -> Text -> Either Parsec.ParseError a
+parseTest parser text =
+  Parsec.runParser parser (State []) "" text
