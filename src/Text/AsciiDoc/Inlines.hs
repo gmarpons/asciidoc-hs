@@ -1,3 +1,7 @@
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
+
 -- |
 -- Module      :  Text.AsciiDoc.Inlines
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -12,13 +16,15 @@
 -- It tries to be compatible with Asciidoctor.
 module Text.AsciiDoc.Inlines
   ( Inline (..),
-    Inlines,
-    QuoteType (..),
+    -- Inlines,
+    -- Format (..),
+    pInline,
     pInlines,
     parseTest,
   )
 where
 
+import Control.Monad
 import Control.Monad.Combinators hiding
   ( endBy1,
     sepBy1,
@@ -27,21 +33,30 @@ import Control.Monad.Combinators hiding
     someTill,
   )
 import Control.Monad.Combinators.NonEmpty
-import Data.Bifunctor
 import Data.Char hiding (Space)
 import Data.List.NonEmpty ((<|), NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text as T
+import Debug.Trace
 import qualified Text.Parsec as Parsec
   ( ParseError,
     Parsec,
+    ParsecT,
+    Stream,
     eof,
+    getState,
+    lookAhead,
+    modifyState,
     notFollowedBy,
+    putState,
     runParser,
+    try,
+    unexpected,
   )
 import qualified Text.Parsec.Char as Parsec
-  ( char,
+  ( anyChar,
+    char,
     oneOf,
     satisfy,
     string,
@@ -49,304 +64,295 @@ import qualified Text.Parsec.Char as Parsec
 
 type Parser = Parsec.Parsec Text State
 
--- | A stack (LIFO) of descriptors of potential open quoted text blocks. Top of
--- the stack contains the most recently open block.
-newtype State = State [Quote]
+data State = State
+  { -- | A stack (LIFO) of descriptors of potential delimited open inline spans:
+    -- e.g., quoted text blocks, sub- or super-scripts, quoted strings. Top of
+    -- the stack contains the most recently open span.
+    scopes :: [Scope],
+    acceptConstrained :: AcceptConstrained
+  }
+  deriving (Eq, Show)
 
-data Quote
-  = Single QuoteType
-  | Double QuoteType
+data AcceptConstrained
+  = OpenOnly
+  | CloseOnly
+  | OpenAndClose
+  deriving (Eq, Show)
 
-data QuoteType
+data Scope
+  = Scope String String ScopeApplicability ScopeContent
+  deriving (Eq, Ord, Show)
+
+data ScopeApplicability
+  = Constrained
+  | Unconstrained
+  deriving (Eq, Ord, Show)
+
+data ScopeContent
+  = Any
+  | NoSpaces
+  deriving (Eq, Ord, Show)
+
+initialState :: State
+initialState =
+  State
+    { scopes = [],
+      acceptConstrained = OpenOnly
+    }
+
+defaultScopes :: [Scope]
+defaultScopes =
+  [ Scope "\"`" "`\"" Constrained Any,
+    Scope "##" "##" Unconstrained Any,
+    Scope "'`" "`'" Constrained Any,
+    Scope "#" "#" Constrained Any,
+    Scope "**" "**" Unconstrained Any,
+    Scope "*" "*" Constrained Any,
+    Scope "+++" "+++" Unconstrained Any,
+    Scope "++" "++" Unconstrained Any,
+    Scope "+" "+" Constrained Any,
+    Scope "^" "^" Unconstrained NoSpaces,
+    Scope "__" "__" Unconstrained Any,
+    Scope "_" "_" Constrained Any,
+    Scope "``" "``" Unconstrained Any,
+    Scope "`" "`" Constrained Any,
+    Scope "~" "~" Unconstrained NoSpaces
+  ]
+
+defaultConstrainedScopes :: [Scope]
+defaultConstrainedScopes = filter p defaultScopes
+  where
+    p (Scope _ _ applicability _) = applicability == Constrained
+
+defaultUnconstrainedScopes :: [Scope]
+defaultUnconstrainedScopes = filter p defaultScopes
+  where
+    p (Scope _ _ applicability _) = applicability == Unconstrained
+
+data Inline
+  = Space Text
+  | Word Text
+  | Punctuation Text
+  | SpecialPunctuation Text
+  | Newline Text
+  | Symbol Text
+  | StyledText Style ParameterList (NonEmpty Inline)
+  | InlineSeq (NonEmpty Inline)
+  deriving (Eq, Show)
+
+instance Semigroup Inline where
+  InlineSeq x <> InlineSeq y = InlineSeq (x <> y)
+  InlineSeq x <> y = InlineSeq (appendl x [y])
+  x <> InlineSeq y = InlineSeq (x <| y)
+  x <> y = InlineSeq (x <| y :| [])
+
+-- > appendl (1 :| [2,3]) [4,5] == 1 :| [2,3,4,5]
+appendl :: NonEmpty a -> [a] -> NonEmpty a
+appendl (x :| xs) l = x :| (xs ++ l)
+
+data Style
   = Bold
+  | Custom
   | Italic
-  | Mark
   | Monospace
   deriving (Eq, Show)
 
-data Inline
-  = Space
-  | Word Text
-  | Symbol Text
-  | QuotedText QuoteType Inlines
-  deriving (Eq, Show)
+makeInline :: Scope -> ParameterList -> NonEmpty Inline -> Inline
+makeInline scope ps is = case scope of
+  Scope "##" _ _ _ -> StyledText Custom ps is
+  Scope "#" _ _ _ -> StyledText Custom ps is
+  Scope "**" _ _ _ -> StyledText Bold ps is
+  Scope "*" _ _ _ -> StyledText Bold ps is
+  Scope "__" _ _ _ -> StyledText Italic ps is
+  Scope "_" _ _ _ -> StyledText Italic ps is
+  Scope "``" _ _ _ -> StyledText Monospace ps is
+  Scope "`" _ _ _ -> StyledText Monospace ps is
 
-type Inlines = [Inline]
+pPutAcceptConstrained :: AcceptConstrained -> Parser ()
+pPutAcceptConstrained a =
+  Parsec.modifyState $ \s -> s {acceptConstrained = a}
 
-pInlines :: Parser (NonEmpty Inline)
+pCanAcceptConstrainedOpen :: Parser Bool
+pCanAcceptConstrainedOpen = do
+  s <- Parsec.getState
+  case acceptConstrained s of
+    OpenOnly -> pure True
+    OpenAndClose -> pure True
+    CloseOnly -> pure False
+
+pCanAcceptConstrainedClose :: Parser Bool
+pCanAcceptConstrainedClose = do
+  s <- Parsec.getState
+  case acceptConstrained s of
+    OpenOnly -> pure False
+    OpenAndClose -> pure True
+    CloseOnly -> pure True
+
+pInlines :: Parser Inline
 pInlines =
-  postProcessQuote <$> pTentativeQuote <*> pPostQuote
-    <|> (:|) <$> pWord <*> pPostWord
-  where
-    pInlines' = NE.toList <$> pInlines
-    pPostQuote :: Parser Inlines
-    pPostQuote =
-      pInlines'
-        <|> [] <$ Parsec.eof
-    pPostWord :: Parser Inlines
-    pPostWord =
-      (:) <$> pSpaces' <*> pPostPostWord
-        <|> (:) <$> pDelimiter' <*> pPostDelimiter
-        <|> [] <$ Parsec.eof
-    pPostPostWord =
-      pInlines'
-        <|> [] <$ Parsec.eof
-    pSpaces' = Space <$ pSpaces
-    pDelimiter' = Symbol . T.singleton <$> pDelimiter
-    pPostDelimiter =
-      (:) <$> pSpaces' <*> pInlines'
-        <|> (:) <$> pWord <*> pPostWord
+  InlineSeq <$> some pInline
 
-postProcessQuote ::
-  Either (NonEmpty Inline) (NonEmpty Inline) ->
-  Inlines ->
-  NE.NonEmpty Inline
-postProcessQuote (Left (t :| ts)) us = t :| ts <> us
-postProcessQuote (Right (Symbol "*" :| ts)) us = removeDelim (reverse ts)
-  where
-    removeDelim (Symbol "*" : ts') = QuotedText Bold (reverse ts') :| us
-    removeDelim (Space : Symbol "*" : ts') = QuotedText Bold (reverse ts') <| Space :| us
-    removeDelim _ = error "postProcessQuote: unexpected Strong ending"
-postProcessQuote _ _ = error "postProcessQuote: unexpected Strong beginning"
-
-pTentativeQuote :: Parser (Either (NonEmpty Inline) (NonEmpty Inline))
-pTentativeQuote =
-  (\t -> bimap (t :|) (t :|))
-    <$> pDelimiter' <* Parsec.notFollowedBy pDelimiter <*> pPostQuoteOpening
-  where
-    pPostQuoteOpening =
-      Left [Space] <$ pSpaces
-        <|> pQuoteContinuation
-    pDelimiter' = Symbol . T.singleton <$> pDelimiter
-
-pQuoteContinuation :: Parser (Either Inlines Inlines)
-pQuoteContinuation =
-  (\t -> bimap (t :) (t :)) <$> pWord <*> pQuoteContinuation'
-    <|> (\t -> bimap (t :) (t :))
-      <$> pDelimiter' <* Parsec.notFollowedBy pDelimiter <*> pQuoteContinuation''
-    <|> Left [] <$ Parsec.eof
-  where
-    pQuoteContinuation' :: Parser (Either Inlines Inlines)
-    pQuoteContinuation' =
-      (\t -> bimap (t :) (t :)) <$> pDelimiter' <*> pPostDelim
-        <|> (\t -> bimap (t :) (t :)) <$> pSpaces' <*> pQuoteContinuation
-        <|> Left [] <$ Parsec.eof
-    pQuoteContinuation'' =
-      (\mt -> maybe id (\t -> bimap (t :) (t :)) mt)
-        <$> optional pSpaces' <*> pQuoteContinuation
-    pSpaces' = Space <$ pSpaces
-    pDelimiter' = Symbol . T.singleton <$> pDelimiter
-    pPostDelim :: Parser (Either Inlines Inlines)
-    pPostDelim =
-      Right [Space] <$ pSpaces -- TODO: to simplify post processing, use try and return Right []
-        <|> Right [] <$ Parsec.eof
-        <|> pQuoteContinuation
-
--- An example delimiter. TODO: generalize to any quote delimiter.
-pDelimiter :: Parser Char
-pDelimiter = Parsec.char '*'
-
-pWord :: Parser Inline
-pWord =
-  Word . T.pack . NE.toList
-    <$> some pWordChar
-  where
-    pWordChar = Parsec.satisfy $ \c ->
-      isAlphaNum c
-
--- We try to follow rules in
--- https://github.com/Mogztter/asciidoctor-inline-parser/blob/master/lib/asciidoctor/inline_parser/asciidoctor_grammar.treetop
--- in some of the following definitions.
-data Attribute
-  = Role RoleIdentifier
-  | Anchor AnchorIdentifier
-
-newtype QuotedTextAttributes = QuotedTextAttributes
-  { unQuotedTextAttributes :: [Attribute]
-  }
-
-pQuotedTextAttributes :: Parser QuotedTextAttributes
-pQuotedTextAttributes =
-  pOpen *> p <* pClose
-  where
-    p = QuotedTextAttributes <$> many pAttribute
-    pOpen = T.singleton <$> Parsec.char '['
-    pClose = T.singleton <$> Parsec.char ']'
-    pAttribute =
-      pRole
-        <|> pAnchor
-    pRole = Role <$> pQuotedTextRole
-    pAnchor = Anchor <$> pQuotedTextAnchor
-
---  rule quoted_text_role
---    '.' role_identifier <QuotedTextRole>
---  end
-
---  rule quoted_text_anchor
---    '#' anchor_identifier <QuotedTextAnchor>
---  end
-
-pQuotedTextRole :: Parser RoleIdentifier
-pQuotedTextRole =
-  Parsec.char '.' *> pRoleIdentifier
-
-pQuotedTextAnchor :: Parser AnchorIdentifier
-pQuotedTextAnchor =
-  Parsec.char '#' *> pAnchorIdentifier
-
--- NOTE: We include '_' (Low line, U+005F) as part of
--- pCharThatCannotFollowConstrainedQuote
-
---  rule constrained_mark_exception_end
---    ( constrained_mark_exception )
---  end
-
---  rule constrained_mark_exception
---    '[\p{Word}&&[^_]]'r
---  end
-
-pCharThatCannotFollowConstrainedQuote :: Parser Char
-pCharThatCannotFollowConstrainedQuote =
-  Parsec.satisfy $ \c ->
-    isAlphaNum c || generalCategory c
-      `elem` [ ConnectorPunctuation,
-               SpacingCombiningMark,
-               EnclosingMark
-             ]
-
---  rule escaped_quoted_symbol
---    ( '\*' / '\_' / '\`' / '\#' / '\^' / '\~' )
---  end
-
-pEscapedQuotedSymbol :: Parser Text
-pEscapedQuotedSymbol =
-  (<>)
-    <$> pBackslash <*> pQuotedSymbol
-  where
-    pBackslash = T.singleton <$> Parsec.char '\\'
-    pQuotedSymbol = T.singleton <$> Parsec.oneOf (NE.toList quotedSymbols)
-
---  rule escaped_role_symbol
---    ( '\[' )
---  end
-
-pEscapedRoleSymbol :: Parser Text
-pEscapedRoleSymbol =
-  T.pack
-    <$> Parsec.string "\\["
-
---  rule symbol
---    ( symbol_basic / quoted_symbol )
---  end
-
---  rule symbol_basic
---    [&\-:;=,"'\.!\\{}\]\[<>/()]
---  end
-
---  rule quoted_symbol
---    [_*#`^~]+
---  end
-
-pSymbol :: Parser Text
-pSymbol =
-  (T.singleton <$> pBasicSymbol)
-    <|> pQuotedSymbols
-
-pBasicSymbol :: Parser Char
-pBasicSymbol = Parsec.oneOf $ NE.toList basicSymbols
-
-basicSymbols :: NE.NonEmpty Char
-basicSymbols =
-  '!'
-    :| [ '"',
-         '&',
-         '\'',
-         '(',
-         ')',
-         ',',
-         '-',
-         '.',
-         '/',
-         ':',
-         ';',
-         '<',
-         '=',
-         '>',
-         '[',
-         '\\',
-         ']',
-         '{',
-         '}'
-       ]
-
-pQuotedSymbols :: Parser Text
-pQuotedSymbols =
-  T.pack . NE.toList
-    <$> some pQuotedSymbol
-  where
-    pQuotedSymbol = Parsec.oneOf (NE.toList quotedSymbols)
-
-quotedSymbols :: NE.NonEmpty Char
-quotedSymbols =
-  '#'
-    :| [ '*',
-         '^',
-         '_',
-         '`',
-         '~'
-       ]
-
---  rule role_identifier
---    identifier+ <RoleIdentifier>
---  end
-
---  rule anchor_identifier
---    identifier+ <AnchorIdentifier>
---  end
-
-newtype RoleIdentifier = RoleIdentifier {unRoleIdentifier :: Text}
-
-newtype AnchorIdentifier = AnchorIdentifier {unAnchorIdentifier :: Text}
-
-pRoleIdentifier :: Parser RoleIdentifier
-pRoleIdentifier =
-  RoleIdentifier . T.pack . NE.toList
-    <$> some pIdentifierChar
-
-pAnchorIdentifier :: Parser AnchorIdentifier
-pAnchorIdentifier =
-  AnchorIdentifier . T.pack . NE.toList
-    <$> some pIdentifierChar
-
---  rule identifier
---    [0-9a-zA-Z_\-]
---  end
-
-pIdentifierChar :: Parser Char
-pIdentifierChar = Parsec.satisfy isIdentifierChar
-  where
-    isIdentifierChar c = isAlphaNum c || c == '_' || c == '-'
+pInline :: Parser Inline
+pInline =
+  pSpace
+    <|> pWord -- TODO: replace to pBeginWithAlphaNum
+    <|> pScope
+    <|> pFallback
 
 -- | Like @Text.Parsec.Char.spaces@, but with the following differences:
 --
---     * It returns the parsed characters.
+--     * It returns the parsed characters (enclosed in an Inline).
 --
 --     * Newlines are not considered space.
 --
 -- It's also different from rules found in
 -- https://github.com/Mogztter/asciidoctor-inline-parser/blob/master/lib/asciidoctor/inline_parser/asciidoctor_grammar.treetop
 -- in that we include in @pSpaces@ any space character that is not a newline.
-pSpaces :: Parser Text
-pSpaces =
-  T.pack . NE.toList
-    <$> some pSpace
+pSpace :: Parser Inline
+pSpace =
+  Space . T.pack . NE.toList
+    <$> some pSpaceChar <* pPutAcceptConstrained OpenOnly
 
-pSpace :: Parser Char
-pSpace = Parsec.satisfy isAsciiDocSpace
+pSpaceChar :: Parser Char
+pSpaceChar = Parsec.satisfy isAsciiDocSpace
 
 isAsciiDocSpace :: Char -> Bool
 isAsciiDocSpace c = isSpace c && c /= '\n'
 
+pWord :: Parser Inline
+pWord =
+  Word . T.pack . NE.toList
+    <$> some pWordChar <* pPutAcceptConstrained CloseOnly
+  where
+    pWordChar = Parsec.satisfy $ \c ->
+      isAlphaNum c
+
+newtype ParameterList = ParameterList Text
+  deriving (Eq, Show)
+
+defaultParameterList :: ParameterList
+defaultParameterList = ParameterList ""
+
+pPreParameterList :: Parser (Either Char ParameterList)
+pPreParameterList = pParameterList_
+
+pPostParameterList :: Parser (Either Char ParameterList)
+pPostParameterList = pParameterList_
+
+pParameterList_ :: Parser (Either Char ParameterList)
+pParameterList_ =
+  Right <$> Parsec.try pParameterList'
+    <|> Left <$> Parsec.char '['
+  where
+    pParameterList' =
+      ParameterList . T.pack . NE.toList
+        <$ Parsec.char '[' <*> someTill Parsec.anyChar (Parsec.char ']')
+
+-- Can return '[' or marker, or scope.
+pScope :: Parser Inline
+pScope = do
+  canOpenConstrained <- pCanAcceptConstrainedOpen
+  option (Right defaultParameterList) pPreParameterList >>= \case
+    -- Wrong parameter list, consume the '[' char and return:
+    Left c -> do
+      pure $ Symbol (T.singleton c)
+    Right parameterList -> do
+      is <- case canOpenConstrained of
+        True ->
+          Parsec.try (pUnconstrained_ parameterList)
+            <|> pConstrained_ parameterList
+        False -> pUnconstrained_ parameterList
+      pure is
+
+data ScopeEnding
+  = Closed
+  | Interrupted
+
+pUnconstrained_ :: ParameterList -> Parser Inline
+pUnconstrained_ =
+  -- TODO
+  pConstrained_
+
+pConstrained_ :: ParameterList -> Parser Inline
+pConstrained_ ps = do
+  scope@(Scope open close _applicability _content) <- pPush
+  o <- pOpen open
+  i <- pInline
+  (is, ending) <-
+    manyTill_ pInline (pCanAcceptConstrainedClose *> pPull)
+  case ending of
+    Closed -> do
+      c <- pClose close
+      pure $ makeInline scope ps (i :| is)
+    Interrupted -> pure $ InlineSeq $ Symbol (T.pack o) <| i :| is
+  where
+    pOpen t = Parsec.string t <* pPutAcceptConstrained OpenAndClose
+    pClose t = Parsec.string t <* pPutAcceptConstrained OpenAndClose
+    pPush :: Parser Scope
+    pPush = do
+      scope@(Scope open _ _ _) <- pAnd $ do
+        found <-
+          choice
+            $ fmap (\scope@(Scope open _ _ _) -> scope <$ Parsec.string open)
+            $ defaultConstrainedScopes
+        -- Check: not followed by space or eof
+        -- TODO: Improve space check, guarantee that there is ~pWord afterwards
+        pNot (pure () <$> pSpace <|> Parsec.eof)
+        pure found
+      -- Check: nesting rule
+      -- TODO: Improve nesting rule
+      Parsec.getState >>= \s -> case scopes s of
+        (Scope openTop _ _ _ : _) | openTop == open -> empty
+        _ -> pure ()
+      -- Modify state, but not acceptedConstrained, as we don't consume input
+      Parsec.modifyState $ \s -> s {scopes = scope : scopes s}
+      pure scope
+    pCheckScope :: Scope -> Parser Scope
+    pCheckScope scope@(Scope _open close acceptability content) = do
+      Parsec.string close
+      -- Check: not followed by word
+      -- TODO: improve word check. Only if Constrained needs a word afterwards
+      pNot pWord
+      pure scope
+    pPull, pPull' :: Parser ScopeEnding
+    pPull =
+      pAnd (Parsec.eof) *> pure Interrupted
+        <|> pPull'
+    pPull' = do
+      s <- Parsec.getState
+      found <- pAnd $ choice $ fmap pCheckScope $ scopes s
+      case scopes s of
+        [] -> empty
+        top : following -> do
+          Parsec.putState $ s {scopes = following }
+          case top == found of
+            True -> pure Closed
+            False -> pure Interrupted
+
+pFallback :: Parser Inline
+pFallback =
+  Symbol . T.singleton <$> Parsec.anyChar
+
+-- | Models PEG's @&@ operator using Parsec's 'Parsec.lookAhead' and
+-- 'Parsec.try'.
+pAnd :: Parser a -> Parser a
+pAnd p = Parsec.lookAhead (Parsec.try p)
+
+-- | Models PEG's @!@ operator.
+--
+-- Similar to 'Parsec.notFollowedBy', but @pNot p@ behaves as expected if @p@
+-- does not consume input.
+--
+-- Probably inefficient.
+pNot ::
+  (Parsec.Stream s m t, Show a) =>
+  Parsec.ParsecT s u m a ->
+  Parsec.ParsecT s u m ()
+pNot p =
+  Parsec.try $ join $
+    do a <- Parsec.try p; return (Parsec.unexpected (show a))
+      <|> return (return ())
+
 parseTest :: Parser a -> Text -> Either Parsec.ParseError a
 parseTest parser text =
-  Parsec.runParser parser (State []) "" text
+  Parsec.runParser parser initialState "" text
