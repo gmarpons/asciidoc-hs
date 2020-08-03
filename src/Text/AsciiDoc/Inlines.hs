@@ -137,6 +137,7 @@ data Inline
   = Space Text
   | Word Text
   | Symbol Text
+  | Newline Text
   | StyledText Style (ParameterList Text) (NonEmpty Inline)
   | InlineSeq (NonEmpty Inline)
   deriving (Eq, Show)
@@ -197,8 +198,9 @@ pInlines =
 
 pInline :: Parser (NonEmpty Inline)
 pInline =
-  (:| []) <$> pSpace
-    <|> (:| []) <$> pWord -- TODO: replace to pBeginWithAlphaNum
+  (:| []) <$> pWord -- TODO: replace to pBeginWithAlphaNum
+    <|> (:| []) <$> pSpace
+    <|> (:| []) <$> pNewline
     <|> pScopeWithOptionalParameters
     <|> (:| []) <$> pFallback
 
@@ -221,6 +223,26 @@ pSpaceChar = Parsec.satisfy isAsciiDocSpace
 
 isAsciiDocSpace :: Char -> Bool
 isAsciiDocSpace c = isSpace c && c /= '\n'
+
+-- | It parses as newlines the combinations:
+--
+--     * @CR@
+--     * @CR LF@
+--     * @LF@
+--
+-- This is the exact set parsed by @libasciidoc@. At the moment we do not
+-- consider the combination @LF CR@ (used in some systems, see
+-- https://en.wikipedia.org/wiki/Newline#Representation) as a single newline.
+pNewline :: Parser Inline
+pNewline =
+  Newline <$> pNewline' <* pPutAcceptConstrained OpenOnly
+  where
+    pNewline' :: Parser Text
+    pNewline' =
+      (<>) <$> pSingleton '\r' <*> option "" (pSingleton '\n')
+        <|> pSingleton '\n'
+    pSingleton :: Char -> Parser Text
+    pSingleton c = T.singleton <$> Parsec.char c
 
 pWord :: Parser Inline
 pWord =
