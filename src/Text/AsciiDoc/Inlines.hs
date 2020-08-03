@@ -19,7 +19,7 @@ module Text.AsciiDoc.Inlines
     pInline,
     pInlines,
     Style (..),
-    ParameterList(..),
+    ParameterList (..),
     defaultParameterList,
     parseTest,
   )
@@ -245,13 +245,13 @@ pScopeWithOptionalParameters = do
       Parsec.try (pFailIfInterrupted $ pScope_ Unconstrained parameterList)
         <|> fst <$> pScope_ Constrained parameterList
     False -> fst <$> pScope_ Unconstrained parameterList
-  where
-    pFailIfInterrupted :: Parser (a, ScopeEnding) -> Parser a
-    pFailIfInterrupted p = do
-      (a, ending) <- p
-      case ending of
-        Closed -> pure a
-        Interrupted -> empty
+
+pFailIfInterrupted :: Parser (a, ScopeEnding) -> Parser a
+pFailIfInterrupted p = do
+  (a, ending) <- p
+  case ending of
+    Closed -> pure a
+    Interrupted -> empty
 
 data ScopeEnding
   = Closed -- TODO: closing string should be included.
@@ -293,19 +293,11 @@ pScope_ applicability ps = do
         defaultScopes
 
 pPushDebug arg = do
-  -- BEGIN DEBUG
-  -- pos <- Parsec.getPosition
-  -- nextChar <- pAnd Parsec.anyChar <|> pure 'E'
-  -- st <- Parsec.getState
-  -- Debug.traceShowM ("Push1", Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained st)), reverse (scopes st))
-  -- END DEBUG
-  res <- pPush arg
-  -- BEGIN DEBUG
   pos <- Parsec.getPosition
   nextChar <- pAnd Parsec.anyChar <|> pure 'E'
   st <- Parsec.getState
-  Debug.traceShowM ("Push2" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained st)), reverse (scopes st))
-  -- END DEBUG
+  Debug.traceShowM ("Debug. Push" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained st)), reverse (scopes st))
+  res <- pPush arg
   pure res
 
 -- | It does neither consume input nor modify state field @acceptConstrained@.
@@ -323,12 +315,14 @@ pPush scopeCandidates = do
   where
     pCheckCandidate :: State -> Scope -> Parser Scope
     pCheckCandidate state candidate@(Scope _ _ applicability content) = do
-      _<- Parsec.string (openMarker candidate)
+      -- Debug.traceShowM ("Debug. Push candidate: ", candidate)
+      _ <- Parsec.string (openMarker candidate)
       case (applicability, content) of
         (Constrained, _) -> pRulePush1
         (_, NoSpaces) -> pRulePush1
         _ -> pure ()
-      pRulePush2 state candidate
+      -- pRulePush2 state candidate
+      -- Debug.traceShowM ("Debug. Accept push candidate: ", candidate)
       pure candidate
     -- RULE PUSH 1: open marker not followed by space, when constrained or the
     -- scope cannot contain spaces. More specifically, find alphanumeric
@@ -355,22 +349,16 @@ pPush scopeCandidates = do
         _ -> empty
 
 pPopDebug arg = do
-  -- BEGIN DEBUG
-  -- s <- Parsec.getState
-  -- pos <- Parsec.getPosition
-  -- nextChar <- pAnd Parsec.anyChar <|> pure 'E'
-  -- Debug.traceShowM ("Pop 1", Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained s)), reverse (scopes s))
-  -- END DEBUG
-  res <- pPop arg
-  -- BEGIN DEBUG
   s <- Parsec.getState
   pos <- Parsec.getPosition
   nextChar <- pAnd Parsec.anyChar <|> pure 'E'
-  Debug.traceShowM ("Pop 2" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained s)), reverse (scopes s))
-  -- END DEBUG
+  Debug.traceShowM ("Debug. Pop" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained s)), reverse (scopes s))
+  res <- pPop arg
   pure res
 
 -- | It does neither consume input nor modify state field @acceptConstrained@.
+--
+-- TODO: Avoid boolean blindness in argument.
 pPop :: Bool -> Parser ScopeEnding
 pPop canAcceptConstrainedClose =
   pAnd Parsec.eof *> pure Interrupted
@@ -380,29 +368,28 @@ pPop canAcceptConstrainedClose =
     pPop' = do
       state <- Parsec.getState
       -- All checks under pAnd to not consume input
-      found <- choice $ fmap (pAnd . pCheckCandidate state) $ L.tails $ scopes state
+      found <-
+        choice $ fmap (pAnd . pCheckCandidate state) $ L.tails $ scopes state
       case scopes state of
-        [] -> empty -- Cannot happen because `choice` above would have failed.
-        top : following -> do
-          Parsec.putState $ state {scopes = following}
+        [] -> empty -- Cannot happen because above `candidates` calculation would have failed.
+        top : tail_ -> do
+          Parsec.putState $ state {scopes = tail_}
           case top == found of
             True -> pure Closed
             False -> pure Interrupted
     pCheckCandidate :: State -> [Scope] -> Parser Scope
     pCheckCandidate state = \case
-      candidate@(Scope _open close applicability _content) : rest -> do
-        -- BEGIN DEBUG
-        -- pos <- Parsec.getPosition
-        -- nextChar <- pAnd Parsec.anyChar <|> pure 'E'
-        -- Debug.traceShowM ("Candidate:" :: String, close, Parsec.sourceColumn pos, nextChar)
-        -- END DEBUG
+      candidate@(Scope _open close applicability _content) : tail_ -> do
+        -- Debug.traceShowM ("Debug. Pull candidate: ", candidate, canAcceptConstrainedClose)
         _ <- Parsec.string close
         case (applicability, canAcceptConstrainedClose) of
-          -- pAnd necessary because following RULE POP 1 can consume input.
+          -- Nested pAnd necessary because following RULE POP 1 can consume input.
           (Unconstrained, _) -> pure ()
           (Constrained, True) -> pAnd $ pRulePop1 state
           (Constrained, False) -> empty
-        pRulePop2 candidate rest *> pure candidate
+        pRulePop2 candidate tail_
+        -- Debug.traceShowM ("Debug. Accept pull candidate: ", candidate)
+        pure candidate
       [] -> empty
     -- RULE POP 1: not followed by alphanum. In this case we need to check only
     -- the following character: it must be different from alphanum, or '_'.
@@ -438,17 +425,11 @@ pPop canAcceptConstrainedClose =
               $ catMaybes
               $ fmap (closeMarker s `L.stripPrefix`)
               $ fmap closeMarker ss
-      -- BEGIN DEBUG
-      -- Debug.traceShowM ("Suffixes" :: String, maybeSuffixes)
-      -- END DEBUG
       case maybeSuffixes of
         Just suffixes -> do
           (optional $ choice $ fmap (\t -> Parsec.string t) suffixes) >>= \case
             Just _ -> empty
             Nothing -> do
-              -- BEGIN DEBUG
-              -- Debug.traceShowM ("Candidate accepted!" :: String, s)
-              -- END DEBUG
               pure ()
         Nothing -> pure ()
 
