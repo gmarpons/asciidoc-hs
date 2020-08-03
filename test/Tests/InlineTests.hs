@@ -21,7 +21,8 @@ inlineUnitTests =
     [ simpleInlineTests,
       boldInlineTests,
       unconstrainedStylingTests,
-      nestedStylingScopeTests
+      nestedStylingScopeTests,
+      scopeParameterLists
     ]
 
 simpleInlineTests :: TestTree
@@ -132,8 +133,7 @@ unconstrainedStylingTests =
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", Symbol "#", Space " "]) :| [])),
       testCase "Double marker ending constrained scope" $
         parseTest pInlines "#a ## b#"
-          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ",Symbol "#"]) :| [Space " ",Word "b",Symbol "#"])),
-
+          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", Symbol "#"]) :| [Space " ", Word "b", Symbol "#"])),
       testCase "Nesting constrained inside unconstrained, with spaces one side" $
         parseTest pInlines "##a #b# c##"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", StyledText Custom defaultParameterList (Word "b" :| []), Space " ", Word "c"]) :| [])),
@@ -157,11 +157,41 @@ nestedStylingScopeTests =
           @?= Right (InlineSeq (StyledText Bold defaultParameterList (StyledText Italic defaultParameterList (StyledText Monospace defaultParameterList (Word "a" :| []) :| []) :| []) :| [])),
       testCase "Constrained monospace inside unconstrained italics, inside bold, some space" $
         parseTest pInlines "*a __ `b` __c*"
-          @?= Right (InlineSeq (StyledText Bold (ParameterList "") (Word "a" :| [Space " ",StyledText Italic (ParameterList "") (Space " " :| [StyledText Monospace (ParameterList "") (Word "b" :| []),Space " "]),Word "c"]) :| [])),
+          @?= Right (InlineSeq (StyledText Bold (ParameterList "") (Word "a" :| [Space " ", StyledText Italic (ParameterList "") (Space " " :| [StyledText Monospace (ParameterList "") (Word "b" :| []), Space " "]), Word "c"]) :| [])),
       testCase "Constrained italics interrupted inside custom" $
         parseTest pInlines "#a _b#"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", Symbol "_", Word "b"]) :| [])),
       testCase "Constrained italics between two unconstrained custom (Asciidoctor does not respect nesting rule)" $
         parseTest pInlines "## _a ##b## c_ ##"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Space " " :| [StyledText Italic defaultParameterList (Word "a" :| [Space " ", StyledText Custom defaultParameterList (Word "b" :| [Space " "]), Word "c", Space " "])]) :| []))
+    ]
+
+scopeParameterLists :: TestTree
+scopeParameterLists =
+  testGroup
+    "Parameter lists for scopes"
+    [ testCase "Simple parameter list for constrained scope" $
+        parseTest pInlines "[underline]#a#"
+          @?= Right (InlineSeq (StyledText Custom (ParameterList "underline") (Word "a" :| []) :| [])),
+      testCase "Simple parameter list for unconstrained scope" $
+        parseTest pInlines "[underline]##a##"
+          @?= Right (InlineSeq (StyledText Custom (ParameterList "underline") (Word "a" :| []) :| [])),
+      testCase "Parameter list for unconstrained scope preceded by word" $
+        parseTest pInlines "a[underline]##b##"
+          @?= Right (InlineSeq (Word "a" :| [StyledText Custom (ParameterList "underline") (Word "b" :| [])])),
+      testCase "Parameter list for unconstrained scope succeeded by word" $
+        parseTest pInlines "[underline]##a##b"
+          @?= Right (InlineSeq (StyledText Custom (ParameterList "underline") (Word "a" :| []) :| [Word "b"])),
+      testCase "Failed parameter list for constrained scope preceded by word" $
+        parseTest pInlines "a[underline]#b#"
+          @?= Right (InlineSeq (Word "a" :| [Symbol "[", Word "underline", Symbol "]", StyledText Custom (ParameterList "") (Word "b" :| [])])),
+      testCase "Failed parameter list for constrained scope succeeded by word" $
+        parseTest pInlines "[underline]#a#b"
+          @?= Right (InlineSeq (Symbol "[" :| [Word "underline", Symbol "]", Symbol "#", Word "a", Symbol "#", Word "b"])),
+      testCase "Unfinished (failed) parameter list" $
+        parseTest pInlines "[underline"
+          @?= Right (InlineSeq (Symbol "[" :| [Word "underline"])),
+      testCase "Isolated (failed) parameter list" $
+        parseTest pInlines "[underline] #a#"
+          @?= Right (InlineSeq (Symbol "[" :| [Word "underline", Symbol "]", Space " ", StyledText Custom (ParameterList "") (Word "a" :| [])]))
     ]

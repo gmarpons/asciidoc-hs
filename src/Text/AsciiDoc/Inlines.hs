@@ -14,6 +14,8 @@
 -- This module contains Parsec-style parsers for AsciiDoc inline elements.
 --
 -- It tries to be compatible with Asciidoctor.
+--
+-- TODO: Small glossary with "parameter list", "scope", "quote".
 module Text.AsciiDoc.Inlines
   ( Inline (..),
     pInline,
@@ -45,6 +47,7 @@ import qualified Debug.Trace as Debug
 import qualified Text.Parsec as Parsec
   ( ParseError,
     Parsec,
+    char,
     eof,
     getPosition,
     getState,
@@ -233,18 +236,28 @@ newtype ParameterList a = ParameterList a
 defaultParameterList :: ParameterList Text
 defaultParameterList = ParameterList ""
 
+pParameterList :: Parser (ParameterList Text)
+pParameterList =
+  ParameterList . T.pack
+    <$ Parsec.char '[' <*> manyTill Parsec.anyChar (Parsec.char ']')
+
 pScopeWithOptionalParameters :: Parser (NonEmpty Inline)
-pScopeWithOptionalParameters = do
+pScopeWithOptionalParameters = Parsec.try $ do
   canOpenConstrained <- pCanAcceptConstrainedOpen
-  -- TODO: parse optional parameter list.
-  let parameterList = defaultParameterList
-  case canOpenConstrained of
+  maybeParameters <- optional pParameterList
+  let parameterList = maybe defaultParameterList id maybeParameters
+  (is, ending) <- case canOpenConstrained of
     True ->
       -- Try unconstrained first. If it fails or it is interrupted, assume
       -- constrained will have an equal or better ending.
-      Parsec.try (pFailIfInterrupted $ pScope_ Unconstrained parameterList)
-        <|> fst <$> pScope_ Constrained parameterList
-    False -> fst <$> pScope_ Unconstrained parameterList
+      (\is -> (is, Closed))
+        <$> Parsec.try (pFailIfInterrupted $ pScope_ Unconstrained parameterList)
+          <|> pScope_ Constrained parameterList
+    False -> pScope_ Unconstrained parameterList
+  case (ending, maybeParameters) of
+    (Closed, Just _) -> pure is
+    (_, Nothing) -> pure is
+    (Interrupted, Just _) -> empty
 
 pFailIfInterrupted :: Parser (a, ScopeEnding) -> Parser a
 pFailIfInterrupted p = do
