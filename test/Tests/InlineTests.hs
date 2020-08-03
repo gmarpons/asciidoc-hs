@@ -1,11 +1,9 @@
 module Main where
 
-import Data.Either
 import Data.List.NonEmpty (NonEmpty (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.AsciiDoc.Inlines
-import qualified Text.Parsec as Parsec
 
 main :: IO ()
 main = defaultMain tests
@@ -33,9 +31,9 @@ simpleInlineTests =
     [ testCase "Single-line, no formatting markers" $
         parseTest pInlines "some words with no format"
           @?= Right (InlineSeq (Word "some" :| [Space " ", Word "words", Space " ", Word "with", Space " ", Word "no", Space " ", Word "format"])),
-      testCase "Space at the beginning" $ assertBool "Parser doesn't fail"
-        $ isLeft
-        $ parseTest pInlines " some words preceded by space",
+      -- testCase "Space at the beginning" $ assertBool "Parser doesn't fail"
+      --   $ isLeft
+      --   $ parseTest pInlines " some words preceded by space",
       testCase "No formatting markers with space at the end" $
         parseTest pInlines "some words with no format "
           @?= Right (InlineSeq (Word "some" :| [Space " ", Word "words", Space " ", Word "with", Space " ", Word "no", Space " ", Word "format", Space " "]))
@@ -87,9 +85,15 @@ unconstrainedStylingTests =
     [ testCase "Nesting unconstrained inside constrained, with no space" $
         parseTest pInlines "#a##b##c#"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [StyledText Custom defaultParameterList (Word "b" :| []), Word "c"]) :| [])),
-      testCase "Double nesting, with space" $
+      testCase "Unpaired opening marker before correctly closed unconstrained scope" $
+        parseTest pInlines "#a##b##"
+          @?= Right (InlineSeq (Symbol "#" :| [Word "a", StyledText Custom defaultParameterList (Word "b" :| [])])),
+      testCase "Double nesting, with space (Asciidoctor does not respect nesting rule)" $
         parseTest pInlines "## #a ##b## c# ##"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Space " " :| [StyledText Custom defaultParameterList (Word "a" :| [Space " ", StyledText Custom defaultParameterList (Word "b" :| []), Space " ", Word "c"])]) :| [])),
+      testCase "Unpaired opening marker directly inside unconstrained scope (libasciidoc fails test)" $
+        parseTest pInlines "## #a b ##"
+          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Space " " :| [Symbol "#", Word "a", Space " ", Word "b", Space " "]) :| [])),
       testCase "Nesting constrained directly inside unconstrained, with no space" $
         parseTest pInlines "###a###"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (StyledText Custom defaultParameterList (Word "a" :| []) :| []) :| [])),
@@ -108,13 +112,13 @@ unconstrainedStylingTests =
       testCase "Nesting constrained directly inside unconstrained, with space" $
         parseTest pInlines "## #a# ##"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Space " " :| [StyledText Custom defaultParameterList (Word "a" :| []), Space " "]) :| [])),
-      testCase "Nesting unconstrained inside constrained, with extra spaces" $
+      testCase "Nesting unconstrained inside constrained, with spaces both sides" $
         parseTest pInlines "#a ## b ## c#"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", StyledText Custom defaultParameterList (Space " " :| [Word "b", Space " "]), Space " ", Word "c"]) :| [])),
       testCase "Bad nesting: constrained directly inside constrained" $
         parseTest pInlines "#a #b# c#"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", Symbol "#", Word "b"]) :| [Space " ", Word "c", Symbol "#"])),
-      testCase "Two unconstrained scopes apparently nested" $
+      testCase "Two unconstrained scopes, false nesting" $
         parseTest pInlines "##a ##b## c##"
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " "]) :| [Word "b", StyledText Custom defaultParameterList (Space " " :| [Word "c"])])),
       testCase "Unpaierd opening marker inside unconstrained scope" $
@@ -128,7 +132,17 @@ unconstrainedStylingTests =
           @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", Symbol "#", Space " "]) :| [])),
       testCase "Double marker ending constrained scope" $
         parseTest pInlines "#a ## b#"
-          @?= Right (InlineSeq (StyledText Custom (ParameterList "") (Word "a" :| [Space " ",Symbol "#"]) :| [Space " ",Word "b",Symbol "#"]))
+          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ",Symbol "#"]) :| [Space " ",Word "b",Symbol "#"])),
+
+      testCase "Nesting constrained inside unconstrained, with spaces one side" $
+        parseTest pInlines "##a #b# c##"
+          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", StyledText Custom defaultParameterList (Word "b" :| []), Space " ", Word "c"]) :| [])),
+      testCase "Nesting unconstrained inside constrained, with spaces one side" $
+        parseTest pInlines "#a ##b## c#"
+          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", StyledText Custom defaultParameterList (Word "b" :| []), Space " ", Word "c"]) :| [])),
+      testCase "Unpaired opening marker inside constrained scope" $
+        parseTest pInlines "#a ##b c#"
+          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", Symbol "#", Symbol "#", Word "b", Space " ", Word "c"]) :| []))
     ]
 
 nestedStylingScopeTests :: TestTree
@@ -146,5 +160,8 @@ nestedStylingScopeTests =
           @?= Right (InlineSeq (StyledText Bold (ParameterList "") (Word "a" :| [Space " ",StyledText Italic (ParameterList "") (Space " " :| [StyledText Monospace (ParameterList "") (Word "b" :| []),Space " "]),Word "c"]) :| [])),
       testCase "Constrained italics interrupted inside custom" $
         parseTest pInlines "#a _b#"
-          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", Symbol "_", Word "b"]) :| []))
+          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Word "a" :| [Space " ", Symbol "_", Word "b"]) :| [])),
+      testCase "Constrained italics between two unconstrained custom (Asciidoctor does not respect nesting rule)" $
+        parseTest pInlines "## _a ##b## c_ ##"
+          @?= Right (InlineSeq (StyledText Custom defaultParameterList (Space " " :| [StyledText Italic defaultParameterList (Word "a" :| [Space " ", StyledText Custom defaultParameterList (Word "b" :| [Space " "]), Word "c", Space " "])]) :| []))
     ]
