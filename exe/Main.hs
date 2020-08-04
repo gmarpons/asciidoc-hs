@@ -16,4 +16,4 @@ main = do
   case result of
     Left err -> error $ "Parsing error: " <> show err
     Right inline ->
-      T.putStrLn $ Aeson.encodeToLazyText $ convertDocument [inline]
+      T.putStrLn $ Aeson.encodeToLazyText $ convertDocument [addSourcePositions inline]

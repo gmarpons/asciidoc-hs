@@ -1,6 +1,4 @@
-{-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Inlines
@@ -14,8 +12,6 @@
 -- This module contains Parsec-style parsers for AsciiDoc inline elements.
 --
 -- It tries to be compatible with Asciidoctor.
---
--- TODO: Small glossary with "parameter list", "scope", "quote".
 module Text.AsciiDoc.Inlines
   ( Inline (..),
     pInline,
@@ -25,6 +21,7 @@ module Text.AsciiDoc.Inlines
     defaultParameterList,
     parseTest,
     initialState,
+    addSourcePositions,
   )
 where
 
@@ -45,6 +42,7 @@ import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Debug.Trace as Debug
+import Optics.Traversal
 import qualified Text.Parsec as Parsec
   ( ParseError,
     Parsec,
@@ -142,6 +140,41 @@ data Inline
   | StyledText Style (ParameterList Text) (NonEmpty Inline)
   | InlineSeq (NonEmpty Inline)
   deriving (Eq, Show)
+
+subInlines :: Traversal' Inline Inline
+subInlines = traversalVL subInlines'
+  where
+    subInlines' f = \case
+      StyledText style parameters inlines ->
+        StyledText style parameters <$> traverse f inlines
+      InlineSeq inlines -> InlineSeq <$> traverse f inlines
+      x -> pure x
+
+inlineLength :: Inline -> Int
+inlineLength = \case
+  Word t -> T.length t
+  Space t -> T.length t
+  Symbol t -> T.length t
+  _ -> 0
+
+type SourcePosition = (Int, Int)
+
+wrapWithSourcePosition :: SourcePosition -> Inline -> (Inline, SourcePosition)
+wrapWithSourcePosition (line, col) = \case
+  Newline t -> (Newline t, (line + 1, 1))
+  x ->
+    ( StyledText Custom (ParameterList (T.pack $ "data-pos: " <> show line <> ":" <> show col)) (x :| []),
+      (line, col + inlineLength x)
+    )
+
+addSourcePositions :: Inline -> Inline
+addSourcePositions = fst . addSourcePositions' (1, 1)
+  where
+    addSourcePositions' :: SourcePosition -> Inline -> (Inline, SourcePosition)
+    addSourcePositions' initial inline =
+      wrapWithSourcePosition initial
+        $ fst
+        $ mapAccumLOf subInlines addSourcePositions' initial inline
 
 instance Semigroup Inline where
   InlineSeq x <> InlineSeq y = InlineSeq (x <> y)
