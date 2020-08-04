@@ -18,8 +18,10 @@ extra-source-files:  CHANGELOG.adoc,
 library
   hs-source-dirs:      src
   exposed-modules:     Text.AsciiDoc.Inlines
+                       Text.AsciiDoc.Pandoc
   -- other-modules:
   build-depends:       base ^>= 4.14.0.0,
+                       pandoc-types == 1.21.*,
                        parsec == 3.1.*,
                        parser-combinators == 1.2.*,
                        text == 1.2.*
@@ -42,6 +44,7 @@ executable asciidoc-hs
   main-is:             Main.hs
   -- other-modules:
   build-depends:       asciidoc-hs,
+                       aeson == 1.5.*,
                        base ^>= 4.14.0.0,
                        parsec == 3.1.*,
                        text == 1.2.*

@@ -24,6 +24,7 @@ module Text.AsciiDoc.Inlines
     ParameterList (..),
     defaultParameterList,
     parseTest,
+    initialState,
   )
 where
 
