@@ -137,7 +137,7 @@ data Inline
   | Word Text
   | Symbol Text
   | Newline Text
-  | StyledText Style (ParameterList Text) (NonEmpty Inline)
+  | StyledText Style (ParameterList Text) Text (NonEmpty Inline) Text
   | InlineSeq (NonEmpty Inline)
   deriving (Eq, Show)
 
@@ -145,8 +145,8 @@ subInlines :: Traversal' Inline Inline
 subInlines = traversalVL subInlines'
   where
     subInlines' f = \case
-      StyledText style parameters inlines ->
-        StyledText style parameters <$> traverse f inlines
+      StyledText style parameters open inlines close ->
+        fmap (\x -> StyledText style parameters open x close) $ traverse f inlines
       InlineSeq inlines -> InlineSeq <$> traverse f inlines
       x -> pure x
 
@@ -163,7 +163,12 @@ wrapWithSourcePosition :: SourcePosition -> Inline -> (Inline, SourcePosition)
 wrapWithSourcePosition (line, col) = \case
   Newline t -> (Newline t, (line + 1, 1))
   x ->
-    ( StyledText Custom (ParameterList (T.pack $ "data-pos: " <> show line <> ":" <> show col)) (x :| []),
+    ( StyledText
+        Custom
+        (ParameterList (T.pack $ "data-sourcepos: " <> show line <> ":" <> show col))
+        ""
+        (x :| [])
+        "",
       (line, col + inlineLength x)
     )
 
@@ -193,16 +198,22 @@ data Style
   | Monospace
   deriving (Eq, Show)
 
-makeInline :: Scope -> ParameterList Text -> NonEmpty Inline -> Inline
-makeInline scope ps is = case scope of
-  Scope "##" _ _ _ -> StyledText Custom ps is
-  Scope "#" _ _ _ -> StyledText Custom ps is
-  Scope "**" _ _ _ -> StyledText Bold ps is
-  Scope "*" _ _ _ -> StyledText Bold ps is
-  Scope "__" _ _ _ -> StyledText Italic ps is
-  Scope "_" _ _ _ -> StyledText Italic ps is
-  Scope "``" _ _ _ -> StyledText Monospace ps is
-  Scope "`" _ _ _ -> StyledText Monospace ps is
+makeInline ::
+  Scope ->
+  ParameterList Text ->
+  Text ->
+  NonEmpty Inline ->
+  Text ->
+  Inline
+makeInline scope ps open is close = case scope of
+  Scope "##" _ _ _ -> StyledText Custom ps open is close
+  Scope "#" _ _ _ -> StyledText Custom ps open is close
+  Scope "**" _ _ _ -> StyledText Bold ps open is close
+  Scope "*" _ _ _ -> StyledText Bold ps open is close
+  Scope "__" _ _ _ -> StyledText Italic ps open is close
+  Scope "_" _ _ _ -> StyledText Italic ps open is close
+  Scope "``" _ _ _ -> StyledText Monospace ps open is close
+  Scope "`" _ _ _ -> StyledText Monospace ps open is close
   _ -> InlineSeq is
 
 pPutAcceptConstrained :: AcceptConstrained -> Parser ()
@@ -348,7 +359,8 @@ pScope_ applicability ps = do
   case ending of
     Closed -> do
       c <- pClose close
-      pure $ (makeInline scope ps (join (i :| is)) :| [], ending)
+      pure $
+        (makeInline scope ps (T.pack o) (join (i :| is)) (T.pack c) :| [], ending)
     Interrupted -> pure (Symbol (T.pack o) <| join (i :| is), ending)
   where
     pCheckAcceptConstrainedOpen =

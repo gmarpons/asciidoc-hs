@@ -37,16 +37,16 @@ convertInline = \case
   Word t -> Pandoc.str t
   Symbol t -> Pandoc.str t
   Newline _ -> Pandoc.softbreak
-  StyledText Bold (ParameterList parameters) inlines
+  StyledText Bold (ParameterList parameters) _ inlines _
     | T.null parameters ->
       Pandoc.strong $ foldMap convertInline inlines
-  StyledText Bold (ParameterList parameters) inlines ->
+  StyledText Bold (ParameterList parameters) _ inlines _ ->
     let attributes = ("", [], [("raw-attributes", parameters)])
      in Pandoc.spanWith attributes $ Pandoc.strong $ foldMap convertInline inlines
-  StyledText Italic (ParameterList parameters) inlines
+  StyledText Italic (ParameterList parameters) _ inlines _
     | T.null parameters ->
       Pandoc.emph $ foldMap convertInline inlines
-  StyledText Italic (ParameterList parameters) inlines ->
+  StyledText Italic (ParameterList parameters) _ inlines _ ->
     let attributes = ("", [], [("raw-attributes", parameters)])
      in Pandoc.spanWith attributes $ Pandoc.emph $ foldMap convertInline inlines
   -- NOTE. Pandoc's Code nodes do not support nested markup. It's a pity because
@@ -64,10 +64,10 @@ convertInline = \case
   --    that need it.
   --
   -- 3) Convert inlines into a Text with no markup applied.
-  StyledText Monospace (ParameterList parameters) inlines ->
+  StyledText Monospace (ParameterList parameters) _ inlines _ ->
     let attributes = ("", ["monospace"], [("raw-attributes", parameters)])
      in Pandoc.spanWith attributes $ foldMap convertInline inlines
-  StyledText Custom (ParameterList parameters) inlines ->
+  StyledText Custom (ParameterList parameters) _ inlines _->
     let attributes = ("", ["custom"], [("raw-attributes", parameters)])
      in Pandoc.spanWith attributes $ foldMap convertInline inlines
   InlineSeq inlines -> Pandoc.spanWith ("", [], []) $ foldMap convertInline inlines
