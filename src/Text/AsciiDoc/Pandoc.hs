@@ -1,5 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-
 -- |
 -- Module      :  Text.AsciiDoc.Pandoc
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -67,7 +65,7 @@ convertInline = \case
   StyledText Monospace (ParameterList parameters) _ inlines _ ->
     let attributes = ("", ["monospace"], [("raw-attributes", parameters)])
      in Pandoc.spanWith attributes $ foldMap convertInline inlines
-  StyledText Custom (ParameterList parameters) _ inlines _->
+  StyledText Custom (ParameterList parameters) _ inlines _ ->
     let attributes = ("", ["custom"], [("raw-attributes", parameters)])
      in Pandoc.spanWith attributes $ foldMap convertInline inlines
   InlineSeq inlines -> Pandoc.spanWith ("", [], []) $ foldMap convertInline inlines

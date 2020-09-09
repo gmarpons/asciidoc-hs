@@ -27,7 +27,8 @@ library
                        parser-combinators == 1.2.*,
                        text == 1.2.*
   default-language:    Haskell2010
-  default-extensions:  OverloadedStrings
+  default-extensions:  LambdaCase,
+                       OverloadedStrings
   -- other-extensions:
   ghc-options:         -Wall
                        -Wincomplete-uni-patterns
@@ -50,7 +51,8 @@ executable asciidoc-hs
                        parsec == 3.1.*,
                        text == 1.2.*
   default-language:    Haskell2010
-  default-extensions:  OverloadedStrings
+  default-extensions:  LambdaCase,
+                       OverloadedStrings
   -- other-extensions:
   ghc-options:         -Wall
                        -Wincomplete-uni-patterns
@@ -74,5 +76,6 @@ test-suite asciidoc-hs-test
                        tasty,
                        tasty-hunit
   default-language:    Haskell2010
-  default-extensions:  OverloadedStrings
+  default-extensions:  LambdaCase,
+                       OverloadedStrings
   ghc-options:         -Wall

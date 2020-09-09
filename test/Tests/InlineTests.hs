@@ -1,6 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
-
 module Main where
 
 import Data.List.NonEmpty (NonEmpty (..))
