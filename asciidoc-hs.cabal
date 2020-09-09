@@ -19,6 +19,7 @@ library
   hs-source-dirs:      src
   exposed-modules:     Text.AsciiDoc.Inlines
                        Text.AsciiDoc.Pandoc
+                       Text.AsciiDoc.SourceRange
   -- other-modules:
   build-depends:       base ^>= 4.14.0.0,
                        optics-core == 0.3.*,
