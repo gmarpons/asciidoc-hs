@@ -202,7 +202,7 @@ addSourcePositions = fst . addSourcePositions' (1, 1)
       x -> x
     prefixLength = \case
       StyledText _ (ParameterList t) o _ _
-        | T.null t -> T.length t + T.length o
+        | T.null t -> T.length o
         | otherwise -> 2 + T.length t + T.length o
       _ -> 0
     suffixLength = \case
