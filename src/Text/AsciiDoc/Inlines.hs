@@ -12,6 +12,7 @@
 -- It tries to be compatible with Asciidoctor.
 module Text.AsciiDoc.Inlines
   ( Inline (..),
+    parseInline,
     pInline,
     pInlines,
     Style (..),
@@ -478,6 +479,12 @@ pFallback =
 -- 'Parsec.try'.
 pAnd :: Parser a -> Parser a
 pAnd p = Parsec.lookAhead (Parsec.try p)
+
+parseInline :: Text -> Inline
+parseInline text =
+  case Parsec.runParser pInlines initialState "" text of
+    Right result -> result
+    Left _ -> error "parseInline: Failed"
 
 parseTest :: Parser a -> Text -> Either Parsec.ParseError a
 parseTest parser text =
