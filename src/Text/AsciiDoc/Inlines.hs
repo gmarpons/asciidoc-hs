@@ -106,7 +106,9 @@ defaultScopes =
     Scope "__" "__" Unconstrained Any,
     Scope "_" "_" Constrained Any,
     Scope "``" "``" Unconstrained Any,
-    Scope "`" "`" Constrained Any
+    Scope "`" "`" Constrained Any,
+    Scope "~" "~" Constrained Any,
+    Scope "^" "^" Constrained Any
   ]
 
 -- | Association list.
@@ -152,6 +154,8 @@ data Style
   | Custom
   | Italic
   | Monospace
+  | Subscript
+  | Superscript
   deriving (Eq, Show)
 
 makeInline ::
@@ -170,6 +174,8 @@ makeInline scope ps open is close = case scope of
   Scope "_" _ _ _ -> StyledText Italic ps open is close
   Scope "``" _ _ _ -> StyledText Monospace ps open is close
   Scope "`" _ _ _ -> StyledText Monospace ps open is close
+  Scope "~" _ _ _ -> StyledText Subscript ps open is close
+  Scope "^" _ _ _ -> StyledText Superscript ps open is close
   _ -> InlineSeq is
 
 pPutAcceptConstrained :: AcceptConstrained -> Parser ()
