@@ -42,6 +42,7 @@ module Text.AsciiDoc.Blocks
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Monad.Combinators (eitherP, many, optional)
 import Control.Monad.Combinators.NonEmpty
 import Data.Char (isSpace)
@@ -259,7 +260,7 @@ pBlock =
   f <$> many pBlockPrefixItem <*> pBlock'
   where
     pBlock' =
-      pParagraph
+      pPageBreak <|> pParagraph
     f blockPrefix block = fmap (const blockPrefix) block
 
 pBlockPrefixItem :: Parser BlockPrefixItem
@@ -287,6 +288,13 @@ pParagraphLine = satisfyToken f
   where
     -- TODO. Also check no indentation.
     f (UnparsedLine t) | T.any (not . isSpace) t = Just t
+    f _ = Nothing
+
+-- XXX: Does not match whitespace after <<<
+pPageBreak :: Parser (Block [BlockPrefixItem])
+pPageBreak = PageBreak [] <$ satisfyToken f
+  where
+    f (UnparsedLine t) | t == "<<<" = Just ()
     f _ = Nothing
 
 parseTest :: Parser a -> [Token Text] -> Either Parsec.ParseError a
