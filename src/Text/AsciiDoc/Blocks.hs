@@ -290,11 +290,16 @@ pParagraphLine = satisfyToken f
     f (UnparsedLine t) | T.any (not . isSpace) t = Just t
     f _ = Nothing
 
--- XXX: Does not match whitespace after <<<
 pPageBreak :: Parser (Block [BlockPrefixItem])
 pPageBreak = PageBreak [] <$ satisfyToken f
   where
-    f (UnparsedLine t) | t == "<<<" = Just ()
+    f (UnparsedLine t) =
+      let
+        (p,s) = T.splitAt 3 t
+      in
+        if p == "<<<" && T.all (== ' ') s
+        then Just ()
+        else Nothing
     f _ = Nothing
 
 parseTest :: Parser a -> [Token Text] -> Either Parsec.ParseError a
