@@ -17,11 +17,14 @@ extra-source-files:  CHANGELOG.adoc,
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Text.AsciiDoc.Inlines
+  exposed-modules:     Text.AsciiDoc.Blocks
+                       Text.AsciiDoc.Inlines
+                       Text.AsciiDoc.LineParsers
                        Text.AsciiDoc.Pandoc
                        Text.AsciiDoc.SourceRange
   -- other-modules:
   build-depends:       base ^>= 4.14.0.0,
+                       containers == 0.6.*,
                        optics-core == 0.3.*,
                        pandoc-types == 1.21.*,
                        parsec == 3.1.*,
