@@ -24,12 +24,12 @@ library
                        Text.AsciiDoc.SourceRange
                        Text.AsciiDoc.Token
   -- other-modules:
-  build-depends:       base ^>= 4.14.0.0,
-                       optics-core == 0.3.*,
-                       pandoc-types == 1.21.*,
-                       parsec == 3.1.*,
-                       parser-combinators == 1.2.*,
-                       text == 1.2.*
+  build-depends:       base >= 4.12.0.0,
+                       optics-core >= 0.2,
+                       pandoc-types >= 1.20,
+                       parsec >= 3.1.0,
+                       parser-combinators >= 1.2.0,
+                       text >= 1.2.0
   default-language:    Haskell2010
   default-extensions:  LambdaCase,
                        OverloadedStrings
@@ -50,10 +50,10 @@ executable asciidoc-hs
   main-is:             Main.hs
   -- other-modules:
   build-depends:       asciidoc-hs,
-                       aeson == 1.5.*,
-                       base ^>= 4.14.0.0,
-                       parsec == 3.1.*,
-                       text == 1.2.*
+                       aeson >= 1.4.7,
+                       base >= 4.12.0.0,
+                       parsec >= 3.1.0,
+                       text >= 1.2.0
   default-language:    Haskell2010
   default-extensions:  LambdaCase,
                        OverloadedStrings
@@ -74,9 +74,9 @@ test-suite asciidoc-hs-test
   hs-source-dirs:      test
   main-is:             Tests/InlineTests.hs
   build-depends:       asciidoc-hs,
-                       base ^>= 4.14.0.0,
-                       parsec == 3.1.*,
-                       pretty-show == 1.10.*,
+                       base >= 4.12.0.0,
+                       parsec >= 3.1.0,
+                       pretty-show >= 1.10,
                        tasty,
                        tasty-hunit
   default-language:    Haskell2010
