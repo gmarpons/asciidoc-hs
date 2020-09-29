@@ -298,12 +298,12 @@ pAttributeEntry = pAttributeEntry' <* Parsec.try (many pBlankLine) <* Parsec.par
               <* LP.string ":"
               <* LP.some space <*> LP.remaining
           )
-      let v' = parseInline v
+      let v' = parseInline' v
       Parsec.modifyState $ \st -> st {env = Map.insert k v' (env st)}
-      pure $ AttributeEntry k (parseInline' v)
+      pure $ AttributeEntry k $ Just (parseInline' v)
     -- TODO. Replace to a general parseInline with a SubstitutionGroup
     -- parameter.
-    parseInline' = Just . Word
+    parseInline' = Word
 
 pBlockTitle :: Parser (Block UnparsedInline)
 pBlockTitle = pBlockTitle' <* many pBlankLine
