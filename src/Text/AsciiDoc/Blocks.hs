@@ -30,7 +30,7 @@ module Text.AsciiDoc.Blocks
     MetadataItem (..),
     Block (..),
     UnparsedInline,
-    UnparsedLine(..),
+    UnparsedLine (..),
 
     -- * Parsers
     pDocument,
@@ -39,6 +39,7 @@ module Text.AsciiDoc.Blocks
     pAttributeEntry,
     pBlockTitle,
     pNestable,
+    pSectionHeader,
     pParagraph,
     pInitialBlankLines,
     pBlankLine,
@@ -86,11 +87,12 @@ import Text.Parsec.Char (alphaNum, anyChar, char, satisfy, space)
 
 -- | An explicit header level is necessary, as the output style (e.g. font size)
 -- depends on the actual number of @=@'s found (not the actual nesting level).
---
--- The number of @=@'s when @Wrapper@s are implemented.
 data SectionHeader a = SectionHeader a HeaderLevel
   deriving (Eq, Show, Functor)
 
+-- | Greater or equal to 0. A section header prefixed by one single "@=@" has
+-- level 0, and one with two "@=@"'s has level 1. This follows Asciidoctor
+-- behavior.
 type HeaderLevel = Int
 
 -- Text: can contain symbols, does not begin nor end with space.
@@ -195,9 +197,14 @@ data MetadataItem a
 data Block a
   = -- | Regular paragraph.
     Paragraph a
-  | -- | There can be a @Section@ inside an, e.g., open block, but it needs to
+  | -- | This data constructor is not used during parsing, it requires an
+    -- additional "nesting" pass.
+    --
+    -- There can be a @Section@ inside an, e.g., open block, but it needs to
     -- have the "discrete" attribute.
     Section (SectionHeader a) [Block a]
+  | -- |
+    SectionHeaderBlock (SectionHeader a)
   | List ListType (NonEmpty (NonEmpty (Block a)))
   | Table {- TODO. Many things here -}
   | ThematicBreak
@@ -262,14 +269,15 @@ pBlock :: Parser (Block UnparsedInline)
 pBlock =
   Comment <$> pBlockComment
     <|> Comment <$> pLineCommentSequence
-    <|> Parsec.parserTraced "pAttributeEntry" pAttributeEntry
+    <|> pAttributeEntry
     <|> pBlockTitle
     <|> pNestable
+    <|> Parsec.parserTraced "pSectionHeader" pSectionHeader
     <|> Parsec.parserTraced "pParagraph" pParagraph
 
 pBlockComment :: Parser Comment
 pBlockComment = do
-  delimiter <- choice $ fmap pLine' $ LP.blockDelimiters ['/']
+  delimiter <- choice $ fmap pLine' $ LP.runOfN 4 ['/']
   let n = T.length delimiter
   -- It's paramount to use here an alternative version of pLine, called pLine',
   -- that does not try to handle pre-processor directives.
@@ -289,7 +297,7 @@ pLineComment =
 
 -- TODO. Add attribute continuations.
 pAttributeEntry :: Parser (Block a)
-pAttributeEntry = pAttributeEntry' <* Parsec.try (many pBlankLine) <* Parsec.parserTrace "ATTRIBUTEENTRY"
+pAttributeEntry = pAttributeEntry' <* Parsec.try (many pBlankLine)
   where
     pAttributeEntry' = do
       (k, v) <-
@@ -298,12 +306,11 @@ pAttributeEntry = pAttributeEntry' <* Parsec.try (many pBlankLine) <* Parsec.par
               <* LP.string ":"
               <* LP.some space <*> LP.remaining
           )
+      -- TODO. Replace to a general parseInline with a SubstitutionGroup
+      -- parameter.
       let v' = parseInline' v
       Parsec.modifyState $ \st -> st {env = Map.insert k v' (env st)}
       pure $ AttributeEntry k $ Just (parseInline' v)
-    -- TODO. Replace to a general parseInline with a SubstitutionGroup
-    -- parameter.
-    parseInline' = Word
 
 pBlockTitle :: Parser (Block UnparsedInline)
 pBlockTitle = pBlockTitle' <* many pBlankLine
@@ -325,6 +332,24 @@ pNestable = do
     '*' -> Nestable Sidebar {-st1-} bs {-st2-}
     x -> error $ "pNestable: unexpected character '" <> show x <> "'"
 
+-- | Parses a section header and computes its level.
+--
+-- POST-CONDITION: The computed level is greater or equal to 0. This follows
+-- from the fact that 'LP.runOfN 1' can only return texts of length >= 1.
+pSectionHeader :: Parser (Block UnparsedInline)
+pSectionHeader = pSectionHeader' <* many pBlankLine
+  where
+    pSectionHeader' =
+      ( \(prefix, value) ->
+          SectionHeaderBlock $
+            SectionHeader (TextLine value :| []) (-1 + T.length prefix)
+      )
+        <$> pLine
+          ( (,)
+              <$> choice (LP.runOfN 1 ['=']) <* space
+                <*> (LP.satisfy (not . isSpace) <> LP.remaining)
+          )
+
 pParagraph :: Parser (Block UnparsedInline)
 pParagraph = Paragraph <$> pParagraph' <* many pBlankLine
   where
@@ -343,7 +368,7 @@ pParagraph = Paragraph <$> pParagraph' <* many pBlankLine
         <|> TextLine
           <$> pLineNoneOf
             -- Nestable | BlockComment
-            ( LP.blockDelimiters ['=', '*', '/']
+            ( LP.runOfN 4 ['=', '*', '/']
                 <> [
                      -- BlankLine
                      mempty,
@@ -423,8 +448,8 @@ pInclude = do
 pOpenDelimiter :: [Char] -> Parser Char
 pOpenDelimiter cs = do
   -- WARNING! Use of PARTIAL FUNCTION 'T.head': 't' is guaranteed not to be
-  -- empty because it comes from a 'countT' parser in 'blockDelimitersT'.
-  t <- pLineOneOf (LP.blockDelimiters cs) <* many pBlankLine
+  -- empty because 'LP.runOfN 4' can only return texts with length >= 4.
+  t <- pLineOneOf (LP.runOfN 4 cs) <* many pBlankLine
   let (n, c) = (T.length t, T.head t)
   Parsec.modifyState (\st -> st {openBlocks = (n, c) : openBlocks st})
   pure c
@@ -437,8 +462,9 @@ pCloseDelimiter = do
       -- If (n, c) found in openBlocks stack, pop one element. Only consume line
       -- from input (and look for includes) if the found delimiter matches
       -- openBlocks' top.
-      _ <- pLine (LP.count n (char c))
-        <|> Parsec.lookAhead (choice $ fmap (\(n', c') -> pLine' (LP.count n' (char c'))) bs)
+      _ <-
+        pLine (LP.count n (char c))
+          <|> Parsec.lookAhead (choice $ fmap (\(n', c') -> pLine' (LP.count n' (char c'))) bs)
       Parsec.putState $ st {openBlocks = drop 1 (openBlocks st)}
     [] -> error "pCloseDelimiter: Empty State.openBlocks"
 
@@ -465,3 +491,7 @@ parseFile :: FilePath -> IO (Either Parsec.ParseError [Block UnparsedInline])
 parseFile file = do
   tokens <- readTokens file
   parseTest pDocument tokens
+
+-- | Stub until proper inline parsing is implemented.
+parseInline' :: Text -> Inline
+parseInline' = Word

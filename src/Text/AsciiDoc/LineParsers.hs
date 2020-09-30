@@ -9,12 +9,15 @@
 --
 -- Parsec-style parser combinators to help classifying individual AsciiDoc
 -- lines.
+--
+-- All parsers in this module return 'Data.Text.Text', which helps to combine
+-- them using the @Monoid@ instance of 'Text.Parsec.ParsecT'.
 module Text.AsciiDoc.LineParsers
   ( -- * Parser type
     LineParser,
 
     -- * Helper parser combinators
-    blockDelimiters,
+    runOfN,
     many,
     some,
     count,
@@ -43,13 +46,14 @@ import qualified Text.Parsec as Parsec
 -- AsciiDoc document.
 type LineParser = Parsec.ParsecT Text () Identity
 
--- | @blockDelimiters ds@ parses any block delimiter consisting of four or more
--- repeated characters from @ds@.
+-- | @runOfN n cs@ creates a list of parsers, one for every character @c@ member
+-- of @cs@. Each of these parsers accepts any run of @n@ or more consecutive
+-- appearances of @c@.
 --
--- Example: @blockDelimiters ['+', '=']@ accepts runs of four or more symbols
--- @"+"@, or four or more symbols @"="@.
-blockDelimiters :: [Char] -> [LineParser Text]
-blockDelimiters = fmap $ \c -> count 4 (Parsec.char c) <> many (Parsec.char c)
+-- Example: @runOfN 4 ['+', '=']@ accepts runs of four or more symbols @"+"@, or
+-- four or more symbols @"="@.
+runOfN :: Int -> [Char] -> [LineParser Text]
+runOfN n = fmap $ \c -> count n (Parsec.char c) <> many (Parsec.char c)
 
 many :: MonadPlus f => f Char -> f Text
 many p = T.pack <$> PC.many p
