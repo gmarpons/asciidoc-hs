@@ -83,7 +83,7 @@ import qualified Data.Text.IO as T
 import Text.AsciiDoc.Inlines hiding (parseTest)
 import qualified Text.AsciiDoc.LineParsers as LP
 import qualified Text.Parsec as Parsec
-import Text.Parsec.Char (alphaNum, anyChar, char, satisfy, space)
+import Text.Parsec.Char (alphaNum, char, satisfy, space)
 
 -- | An explicit header level is necessary, as the output style (e.g. font size)
 -- depends on the actual number of @=@'s found (not the actual nesting level).
@@ -287,6 +287,7 @@ pBlockPrefix = some pBlockPrefixItem
       Comment <$> pBlockComment
         <|> Comment <$> pLineCommentSequence
         <|> pAttributeEntry
+        <|> pBlockId
         <|> pBlockTitle
 
 pBlockComment :: Parser Comment
@@ -312,7 +313,7 @@ pLineComment =
 
 -- TODO. Add attribute continuations.
 pAttributeEntry :: Parser (BlockPrefixItem a)
-pAttributeEntry = pAttributeEntry' <* Parsec.try (many pBlankLine)
+pAttributeEntry = pAttributeEntry' <* many pBlankLine
   where
     pAttributeEntry' = do
       (k, v) <-
@@ -326,6 +327,11 @@ pAttributeEntry = pAttributeEntry' <* Parsec.try (many pBlankLine)
       let v' = parseInline' v
       Parsec.modifyState $ \st -> st {env = Map.insert k v' (env st)}
       pure $ AttributeEntry k $ Just (parseInline' v)
+
+pBlockId :: Parser (BlockPrefixItem a)
+pBlockId = pBlockId' <* many pBlankLine
+  where
+    pBlockId' = (MetadataItem . BlockId) <$> pLine LP.blockId
 
 pBlockTitle :: Parser (BlockPrefixItem UnparsedInline)
 pBlockTitle = pBlockTitle' <* many pBlankLine
@@ -381,7 +387,7 @@ pParagraph prefix =
           ( LP.runOfN 4 ['=', '*']
               <> [
                    -- Blank line
-                   mempty :: LP.LineParser Text
+                   pure ""
                  ]
           )
     -- Line comments (but not block comments!) can be contained in a paragraph.
@@ -392,10 +398,11 @@ pParagraph prefix =
             -- Nestable | BlockComment
             ( LP.runOfN 4 ['=', '*', '/']
                 <> [
+                     -- BlockId, starts with "[["
+                     LP.blockId,
+                     -- TODO: BlockAttributeList
                      -- BlankLine
-                     mempty,
-                     -- BlockId | BlockAttributeList
-                     between (char '[') (char ']') (LP.many anyChar)
+                     pure ""
                    ]
             )
 
@@ -411,7 +418,7 @@ pInitialBlankLines :: Parser [Text]
 pInitialBlankLines = many pBlankLine
 
 pBlankLine :: Parser Text
-pBlankLine = pLine (mempty :: LP.LineParser Text)
+pBlankLine = pLine $ pure ""
 
 -- | Argument can be a parser for the beginning of the line. Function checks
 -- that the part of the line not parsed is whitespace.
@@ -434,6 +441,16 @@ pLine' p = satisfyToken $
     f (Right l) = Just l
     f (Left _) = Nothing
 
+-- | @pLineOneOf ps@ accepts any line that consists in syntax described by any
+-- parser in @ps@ plus optional space characters.
+--
+-- This function runs parsers in @ps@ in sequence, with no lookahead. This means
+-- that the order in which parsers appear in @ps@ is relevant, and that
+-- 'Parsec.try' could be needed in some elements of @ps@ if their recognized
+-- languages share some prefix.
+--
+-- If blank lines need to be accepted, add @pure ""@ as the last element of
+-- @ps@.
 pLineOneOf :: [LP.LineParser a] -> Parser a
 pLineOneOf parsers = do
   result <- pLineOneOf'
@@ -443,10 +460,20 @@ pLineOneOf parsers = do
     pLineOneOf' = satisfyToken $
       \t ->
         f $
-          Parsec.parse (choice (fmap Parsec.try parsers) <* many space <* Parsec.eof) "" t
+          Parsec.parse (choice parsers <* many space <* Parsec.eof) "" t
     f (Right l) = Just l
     f (Left _) = Nothing
 
+-- | @pLineNoneOf ps@ accepts any line that does not consist in syntax described
+-- by any parser in @ps@ plus optional space characters.
+--
+-- This function runs parsers in @ps@ in sequence, with no lookahead. This means
+-- that the order in which parsers appear in @ps@ is relevant, and that
+-- 'Parsec.try' could be needed in some elements of @ps@ if their recognized
+-- languages share some prefix.
+--
+-- If blank lines need to excluded from acceptance, add @pure ""@ as the last
+-- element of @ps@.
 pLineNoneOf :: [LP.LineParser a] -> Parser Text
 pLineNoneOf parsers = do
   result <- pLineNoneOf'
@@ -456,7 +483,7 @@ pLineNoneOf parsers = do
     pLineNoneOf' = satisfyToken $
       \t ->
         f t $
-          Parsec.parse (choice (fmap Parsec.try parsers) <* many space <* Parsec.eof) "" t
+          Parsec.parse (choice parsers <* many space <* Parsec.eof) "" t
     f _ (Right _) = Nothing
     f t (Left _) = Just t
 

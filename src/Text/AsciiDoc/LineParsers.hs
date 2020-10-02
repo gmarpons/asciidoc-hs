@@ -17,13 +17,14 @@ module Text.AsciiDoc.LineParsers
     LineParser,
 
     -- * Helper parser combinators
+    blockId,
     runOfN,
+    remaining,
     many,
     some,
     count,
     string,
     satisfy,
-    remaining,
   )
 where
 
@@ -36,6 +37,7 @@ import qualified Control.Monad.Combinators as PC hiding
     someTill,
   )
 import qualified Control.Monad.Combinators.NonEmpty as PC
+import Data.Char (isLetter)
 import Data.Functor.Identity (Identity)
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
@@ -46,6 +48,18 @@ import qualified Text.Parsec as Parsec
 -- AsciiDoc document.
 type LineParser = Parsec.ParsecT Text () Identity
 
+-- | Accepts a block identifier: an alphanumeric string starting with a letter
+-- surrounded by "@[[@" and "@]]@".
+--
+-- Accepts null identifiers (the empty string).
+--
+-- It does not accept spaces between the square brackets.
+blockId :: LineParser Text
+blockId =
+  string "[["
+    *> PC.option T.empty (satisfy isLetter <> many Parsec.alphaNum)
+      <* string "]]"
+
 -- | @runOfN n cs@ creates a list of parsers, one for every character @c@ member
 -- of @cs@. Each of these parsers accepts any run of @n@ or more consecutive
 -- appearances of @c@.
@@ -54,6 +68,11 @@ type LineParser = Parsec.ParsecT Text () Identity
 -- four or more symbols @"="@.
 runOfN :: Int -> [Char] -> [LineParser Text]
 runOfN n = fmap $ \c -> count n (Parsec.char c) <> many (Parsec.char c)
+
+-- | Returns (parses successfully) the remaining text of line, whatever its
+-- content.
+remaining :: LineParser Text
+remaining = Parsec.getInput <* Parsec.setInput ""
 
 many :: MonadPlus f => f Char -> f Text
 many p = T.pack <$> PC.many p
@@ -69,8 +88,3 @@ string s = T.pack <$> Parsec.string s
 
 satisfy :: (Char -> Bool) -> LineParser Text
 satisfy f = T.singleton <$> Parsec.satisfy f
-
--- | Returns (parses successfully) the remaining text of line, whatever its
--- content.
-remaining :: LineParser Text
-remaining = Parsec.getInput <* Parsec.setInput ""
