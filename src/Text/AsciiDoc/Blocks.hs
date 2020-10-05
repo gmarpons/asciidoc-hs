@@ -37,10 +37,13 @@ module Text.AsciiDoc.Blocks
     pBlocks,
     pBlock,
     pAttributeEntry,
+    pBlockId,
+    pBlockAttributeList,
     pBlockTitle,
     pNestable,
     pSectionHeader,
     pParagraph,
+    pDanglingBlockPrefix,
     pInitialBlankLines,
     pBlankLine,
 
@@ -288,6 +291,7 @@ pBlockPrefix = some pBlockPrefixItem
         <|> Comment <$> pLineCommentSequence
         <|> pAttributeEntry
         <|> pBlockId
+        <|> pBlockAttributeList
         <|> pBlockTitle
 
 pBlockComment :: Parser Comment
@@ -297,7 +301,9 @@ pBlockComment = do
   -- We use here an alternative version of pLine, called pLine', that does not
   -- try to handle pre-processor directives, as includes have no effect inside
   -- block comments.
-  ts <- manyTill (pLine' LP.remaining) $ eitherP (pLine' (LP.count n (char '/'))) Parsec.eof
+  ts <-
+    manyTill (pLine' LP.anyRemainder) $
+      eitherP (pLine' (LP.count n (char '/'))) Parsec.eof
   option () pInclude
   _ <- many pBlankLine
   pure $ BlockComment ts
@@ -309,7 +315,7 @@ pLineCommentSequence =
 -- | Parses a line starting with *exactly* two '/'s.
 pLineComment :: Parser Text
 pLineComment =
-  pLine (LP.string "//" *> Parsec.notFollowedBy (char '/') *> LP.remaining)
+  pLine (LP.string "//" *> Parsec.notFollowedBy (char '/') *> LP.anyRemainder)
 
 -- TODO. Add attribute continuations.
 pAttributeEntry :: Parser (BlockPrefixItem a)
@@ -320,7 +326,7 @@ pAttributeEntry = pAttributeEntry' <* many pBlankLine
         pLine
           ( (,) <$ LP.string ":" <*> LP.some alphaNum
               <* LP.string ":"
-              <* LP.some space <*> LP.remaining
+              <* LP.some space <*> LP.anyRemainder
           )
       -- TODO. Replace to a general parseInline with a SubstitutionGroup
       -- parameter.
@@ -333,12 +339,19 @@ pBlockId = pBlockId' <* many pBlankLine
   where
     pBlockId' = (MetadataItem . BlockId) <$> pLine LP.blockId
 
+pBlockAttributeList :: Parser (BlockPrefixItem a)
+pBlockAttributeList = pBlockAttributeList' <* many pBlankLine
+  where
+    pBlockAttributeList' =
+      (MetadataItem . BlockAttributeList)
+        <$> pLine LP.blockAttributeList
+
 pBlockTitle :: Parser (BlockPrefixItem UnparsedInline)
 pBlockTitle = pBlockTitle' <* many pBlankLine
   where
     pBlockTitle' =
       (MetadataItem . BlockTitle . (:| []) . TextLine)
-        <$> pLine (LP.string "." *> (LP.satisfy (not . isSpace) <> LP.remaining))
+        <$> pLine (LP.string "." *> (LP.satisfy (not . isSpace) <> LP.anyRemainder))
 
 -- | Parses a nestable delimited block.
 pNestable :: [BlockPrefixItem UnparsedInline] -> Parser (Block UnparsedInline)
@@ -370,7 +383,7 @@ pSectionHeader prefix =
         <$> pLine
           ( (,)
               <$> choice (LP.runOfN 1 ['=']) <* space
-                <*> (LP.satisfy (not . isSpace) <> LP.remaining)
+                <*> (LP.satisfy (not . isSpace) <> LP.anyRemainder)
           )
 
 pParagraph :: [BlockPrefixItem UnparsedInline] -> Parser (Block UnparsedInline)
@@ -399,8 +412,9 @@ pParagraph prefix =
             ( LP.runOfN 4 ['=', '*', '/']
                 <> [
                      -- BlockId, starts with "[["
-                     LP.blockId,
-                     -- TODO: BlockAttributeList
+                     Parsec.try LP.blockId,
+                     -- BlockAttributeList, starts with "["
+                     pure "" <$> LP.blockAttributeList,
                      -- BlankLine
                      pure ""
                    ]
@@ -519,7 +533,7 @@ pOpenDelimiter cs = do
     False -> do
       Parsec.putState (st {openBlocks = (n, c) : openBlocks st})
       -- Consume one token (aka one line of input), and following blanklines
-      _ <- pLine $ LP.remaining
+      _ <- pLine $ LP.anyRemainder
       _ <- many pBlankLine
       -- satisfyToken (const $ Just ())
       pure c
