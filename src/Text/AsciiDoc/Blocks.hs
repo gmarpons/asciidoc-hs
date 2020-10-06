@@ -173,11 +173,10 @@ data Comment
   | BlockComment [Text]
   deriving (Eq, Show)
 
--- | A Block can be preceded by an arbitrary (finite) list of
--- @BlockAttributes@s.
+-- | A Block can be preceded by an arbitrary (finite) list of @MetadataItem@s.
 --
--- This is a semi-syntactic element. Every value of this type comes from a
--- source line.
+-- This is a syntactic element. Every value of this type comes from a source
+-- line.
 data MetadataItem a
   = -- | A block can have more than one ID (aka anchor), and all of them can be
     -- used in cross-references.
