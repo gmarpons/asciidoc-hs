@@ -22,9 +22,11 @@ module Text.AsciiDoc.LineParsers
     runOfN,
     anyRemainder,
     many,
+    manyText,
     some,
     count,
     string,
+    char,
     satisfy,
   )
 where
@@ -39,7 +41,7 @@ import qualified Control.Monad.Combinators as PC hiding
   )
 import Control.Monad.Combinators ((<|>))
 import qualified Control.Monad.Combinators.NonEmpty as PC
-import Data.Char (isAlphaNum, isLetter, isSpace)
+import Data.Char (isAlphaNum, isDigit, isLetter, isSpace, ord)
 import Data.Functor.Identity (Identity)
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
@@ -50,8 +52,15 @@ import qualified Text.Parsec as Parsec
 -- AsciiDoc document.
 type LineParser = Parsec.ParsecT Text () Identity
 
--- | Accepts a block identifier: an alphanumeric string starting with a letter
--- (or "@_@") surrounded by "@[[@" and "@]]@".
+-- | Accepts a block identifier using the double square bracket syntax: an
+-- identifier surrounded by "@[[@" and "@]]@". The identifier must start with a
+-- letter, or "@_@", or "@:@". It can contain letters, digits, and some other
+-- special characters defined in https://www.w3.org/TR/REC-xml/#NT-Name
+--
+-- Note that that the aforementioned requirements only apply to double square
+-- bracket syntax: other ways of defining identifiers accept the full range of
+-- Unicode characters. For more information see
+-- https://asciidoctor.org/docs/user-manual/#custom-ids.
 --
 -- Accepts null identifiers (the empty string).
 --
@@ -59,10 +68,28 @@ type LineParser = Parsec.ParsecT Text () Identity
 blockId :: LineParser Text
 blockId =
   string "[["
-    *> PC.option T.empty (satisfy isBlockIdFirstChar <> many Parsec.alphaNum)
+    *> PC.option
+      T.empty
+      ( satisfy isBlockIdStartChar <> many (Parsec.satisfy isBlockIdChar)
+      )
       <* string "]]"
   where
-    isBlockIdFirstChar c = c `elem` ['_', 'º', 'ª'] || isLetter c
+    -- TODO. Assess if package charset can be used to speed-up the following
+    -- checks.
+    isBlockIdStartChar c = c `elem` ['_', ':'] || isLetter c
+    isBlockIdChar c =
+      isBlockIdStartChar c
+        || isDigit c
+        || c == '-'
+        || c == '.'
+        -- #xB7
+        || c == '·'
+        -- #x203F
+        || c == '‿'
+        -- #x2040
+        || c == '⁀'
+        -- #x0300-#x036F (Combining Diacritical Marks)
+        || (ord c >= 768 && ord c <= 879)
 
 -- | Accepts an square-bracket-enclosed list of strings separated by commas.
 -- Every string is considered an attribute.
