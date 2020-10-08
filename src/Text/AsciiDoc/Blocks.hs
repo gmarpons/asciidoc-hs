@@ -342,7 +342,7 @@ pBlockAttributeList :: Parser (BlockPrefixItem a)
 pBlockAttributeList = pBlockAttributeList' <* many pBlankLine
   where
     pBlockAttributeList' =
-      (MetadataItem . BlockAttributeList)
+      (MetadataItem . BlockAttributeList . (: []))
         <$> pLine LP.blockAttributeList
 
 pBlockTitle :: Parser (BlockPrefixItem UnparsedInline)

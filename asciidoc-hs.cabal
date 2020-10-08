@@ -17,7 +17,8 @@ extra-source-files:  CHANGELOG.adoc,
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Text.AsciiDoc.Blocks
+  exposed-modules:     Text.AsciiDoc.Attributes
+                       Text.AsciiDoc.Blocks
                        Text.AsciiDoc.Inlines
                        Text.AsciiDoc.LineParsers
                        Text.AsciiDoc.Pandoc

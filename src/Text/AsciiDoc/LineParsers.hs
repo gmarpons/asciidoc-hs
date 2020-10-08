@@ -13,12 +13,14 @@
 -- All parsers in this module return 'Data.Text.Text', which helps to combine
 -- them using the @Monoid@ instance of 'Text.Parsec.ParsecT'.
 module Text.AsciiDoc.LineParsers
-  ( -- * Parser type
+  ( -- = Line Parser type
     LineParser,
 
-    -- * Helper parser combinators
+    -- = Concrete Parsers
     blockId,
     blockAttributeList,
+
+    -- = Generic Parsers
     runOfN,
     anyRemainder,
     many,
@@ -39,9 +41,9 @@ import qualified Control.Monad.Combinators as PC hiding
     some,
     someTill,
   )
-import Control.Monad.Combinators ((<|>))
+
 import qualified Control.Monad.Combinators.NonEmpty as PC
-import Data.Char (isAlphaNum, isDigit, isLetter, isSpace, ord)
+import Data.Char (isAlphaNum, isSpace, isDigit, isLetter, ord)
 import Data.Functor.Identity (Identity)
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
@@ -91,60 +93,26 @@ blockId =
         -- #x0300-#x036F (Combining Diacritical Marks)
         || (ord c >= 768 && ord c <= 879)
 
--- | Accepts an square-bracket-enclosed list of strings separated by commas.
--- Every string is considered an attribute.
+-- | Accepts an square-bracket-enclosed string with almost no restrictions on
+-- the characters in between. Only the very first character needs to be one of
+-- the following list: @[',', '.', '#', '%', '_', 'º', 'ª', '\'', '"']@.
 --
--- Attributes can be empty (the empty string). Attributes can contain square
--- brackets.
---
--- Attributes can be enclosed between single or double quotes. Quote-enclosed
--- attributes can contain commas and quote characters (if escaped with "@\@").
---
--- __Divergence from Asciidoctor__: When a string of the list is only partially
--- enclosed between single or double quotes, Asciidoctor breaks the string into
--- different attributes, and Asciidoc-hs considers it a non-quoted single
--- attribute (i.e., quotes are part of the attribute and commas break the
--- string).
-blockAttributeList :: LineParser [Text]
+-- The string can be empty.
+blockAttributeList :: LineParser Text
 blockAttributeList = do
   t <- string "[" *> anyRemainder
   let (t', remainder) = T.breakOnEnd "]" t
-  case (T.all isSpace remainder, T.unsnoc t') of
-    -- No char between square brackets: empty attribute list
-    (True, Just ("", ']')) -> pure []
-    -- There are some chars between square brackets: accept if first char
-    -- belongs to firstChar
-    (True, Just (t'', ']')) -> do
-      case Parsec.parse pAttributeList "" t'' of
-        Right attributeList -> pure $ attributeList
-        Left _ -> PC.empty
-    -- No closing bracket found at the end of the line: fail
+  case (T.all isSpace remainder, T.uncons t', T.unsnoc t') of
+    -- No chars between square brackets: empty attribute list
+    (True, Nothing, Just (_, ']')) -> pure ""
+    -- There are some chars between square brackets: accept them if starting
+    -- char belongs to a restricted group of characters, discovered empirically.
+    (True, Just (s, _), Just (t'', ']')) | isStartChar s -> pure t''
+    -- Fail otherwise (no square bracket at the end, or no correct first char).
     _ -> PC.empty
   where
-    pAttributeList =
-      (:) <$> pFirst <*> (PC.option [] (pSep *> PC.sepBy pFollowing pSep)) <* Parsec.eof
-    pFirst =
-      Parsec.try (pQuotedAttribute '"' <* many Parsec.space <* pEnd)
-        <|> Parsec.try (pQuotedAttribute '\'' <* many Parsec.space <* pEnd)
-        <|> pFirstChar <> manyText (satisfy (/= ','))
-    -- If no quotes, restrict first char to a restricted number of characters,
-    -- discovered empirically.
-    pFirstChar = satisfy $
-      \c -> isAlphaNum c || c `elem` [',', '.', '#', '%', '_', 'º', 'ª', '\'', '"']
-    pFollowing =
-      Parsec.try (pQuotedAttribute '"' <* many Parsec.space <* pEnd)
-        <|> Parsec.try (pQuotedAttribute '\'' <* many Parsec.space <* pEnd)
-        <|> manyText (satisfy (/= ','))
-    pQuotedAttribute quote =
-      PC.between (Parsec.char quote) (Parsec.char quote) (pAttribute quote)
-    pAttribute quote =
-      manyText (satisfy (\c -> c /= quote && c /= '\\'))
-        <> manyText
-          ( (Parsec.try (char '\\' *> char quote) <|> char '\\')
-              <> manyText (satisfy (\c -> c /= quote && c /= '\\'))
-          )
-    pSep = Parsec.char ',' <* many Parsec.space
-    pEnd = Parsec.lookAhead $ PC.eitherP (char ',') (Parsec.eof)
+    isStartChar c =
+      isAlphaNum c || c `elem` [',', '.', '#', '%', '_', 'º', 'ª', '\'', '"']
 
 -- | @runOfN n cs@ creates a list of parsers, one for every character @c@ member
 -- of @cs@. Each of these parsers accepts any run of @n@ or more consecutive
