@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 -- |
 -- Module      :  Text.AsciiDoc.Attributes
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -41,8 +43,7 @@ import qualified Text.AsciiDoc.LineParsers as LP
 import qualified Text.Parsec as Parsec
 
 data Attribute
-  = QuotedAttribute Text
-  | PositionalAttribute Text
+  = PositionalAttribute Text
   | NamedAttribute Text Text
   | -- | Special Asciidoctor syntax, all fields are optional and can appear in
     -- any order: @[style#id.role1.role2%option1%option2]@.
@@ -60,7 +61,7 @@ data Attribute
 type AttributeParser = LP.LineParser
 
 data Position
-  = First
+  = Start
   | Other
 
 -- | Converts a @Text@ into a list of attributes.
@@ -83,7 +84,7 @@ data Position
 pAttributeList :: AttributeParser (NonEmpty Attribute)
 pAttributeList =
   (:|)
-    <$> pAttribute First
+    <$> pAttribute Start
     <*> (option [] (pSep *> sepBy (pAttribute Other) pSep)) <* Parsec.eof
   where
     pAttribute position =
@@ -97,26 +98,13 @@ pAttributeList =
             Parsec.parse (pAttributeShorthandSyntax AcceptCommas <* Parsec.eof) "" v
       case (position, shorthandOrError) of
         -- First positional attribute, shorthand syntax accepted
-        (First, Right shorthand) -> pure shorthand
-        -- First positional attribute, shorthand syntax rejected: treat as a
+        (Start, Right shorthand) -> pure shorthand
+        -- First positional attribute, shorthand syntax failed: treat as a
         -- regular positional attribute
-        (First, Left _) -> pure $ PositionalAttribute v
+        (Start, Left _) -> pure $ PositionalAttribute v
         -- Position different from first: regular positional attribute
         (Other, _) -> pure $ PositionalAttribute v
-    -- Accepts a fragment of input enclosed in quotes. Eliminates escape
-    -- character '\' when found before 'quote'.
-    pQuotedValue :: Char -> AttributeParser Text
-    pQuotedValue quote =
-      between (Parsec.char quote) (Parsec.char quote) $
-        LP.manyText (LP.satisfy (\c -> c /= quote && c /= '\\'))
-          <> LP.manyText
-            ( (Parsec.try (LP.char '\\' *> LP.char quote) <|> LP.char '\\')
-                <> LP.manyText (LP.satisfy (\c -> c /= quote && c /= '\\'))
-            )
-    -- Accepts a fragment of input finalized with ','.
-    pUnquotedValue :: AttributeParser Text
-    pUnquotedValue = (T.strip . T.pack) <$> many (Parsec.satisfy (/= ','))
-    pUnquoted First =
+    pUnquoted Start =
       Parsec.try pUnquotedShorthand
         <|> Parsec.try pNamed
         <|> pPositional
@@ -133,6 +121,16 @@ pAttributeList =
         ShorthandSyntaxAttribute style _ _ _
           | T.all (/= '=') style -> pure shorthand
         _ -> empty
+    pQuotedValue :: Char -> AttributeParser Text
+    pQuotedValue quote =
+      between (Parsec.char quote) (Parsec.char quote) $
+        LP.manyText (LP.satisfy (\c -> c /= quote && c /= '\\'))
+          <> LP.manyText
+            ( (Parsec.try (LP.char '\\' *> LP.char quote) <|> LP.char '\\')
+                <> LP.manyText (LP.satisfy (\c -> c /= quote && c /= '\\'))
+            )
+    pUnquotedValue :: AttributeParser Text
+    pUnquotedValue = (T.strip . T.pack) <$> many (Parsec.satisfy (/= ','))
     pNamed :: AttributeParser Attribute
     pNamed =
       NamedAttribute

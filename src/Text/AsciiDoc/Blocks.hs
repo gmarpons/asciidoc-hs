@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveFunctor #-}
 
 -- |
@@ -80,11 +81,14 @@ import Data.Char (isSpace)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
+import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import qualified Text.AsciiDoc.Attributes as Attributes
 import Text.AsciiDoc.Inlines hiding (parseTest)
 import qualified Text.AsciiDoc.LineParsers as LP
+import Text.AsciiDoc.Metadata
 import qualified Text.Parsec as Parsec
 import Text.Parsec.Char (alphaNum, char, satisfy, space)
 
@@ -191,8 +195,17 @@ data MetadataItem a
     --
     -- TODO. Check if some attributes in the list can contain full inlines, as
     -- it's the case with standalone (aka attribute entry) attributes.
-    BlockAttributeList [Text]
+    BlockAttributeList Text
   deriving (Eq, Show, Functor)
+
+instance ToMetadata (MetadataItem Inline) where
+  toMetadata (BlockId i) = mempty {metadataIds = [i]}
+  toMetadata (BlockTitle t) = mempty {metadataTitle = Just $ Last $ t}
+  toMetadata (BlockAttributeList "") = mempty
+  toMetadata (BlockAttributeList t) =
+    case Parsec.parse Attributes.pAttributeList "" t of
+      Right result -> toMetadata result
+      Left _ -> error "toMetadata @(MetadataItem Inline): parse should not fail"
 
 data BlockPrefixItem a
   = MetadataItem (MetadataItem a)
@@ -200,6 +213,11 @@ data BlockPrefixItem a
     AttributeEntry AttributeId (Maybe Inline)
   | Comment Comment
   deriving (Eq, Show, Functor)
+
+instance ToMetadata (BlockPrefixItem Inline) where
+  toMetadata (MetadataItem x) = toMetadata x
+  toMetadata (AttributeEntry _ _) = mempty
+  toMetadata (Comment _) = mempty
 
 -- | A Block consists, syntactically, of one or more contiguous and complete
 -- lines of text. Some block types can contain other blocks.
@@ -342,7 +360,7 @@ pBlockAttributeList :: Parser (BlockPrefixItem a)
 pBlockAttributeList = pBlockAttributeList' <* many pBlankLine
   where
     pBlockAttributeList' =
-      (MetadataItem . BlockAttributeList . (: []))
+      (MetadataItem . BlockAttributeList)
         <$> pLine LP.blockAttributeList
 
 pBlockTitle :: Parser (BlockPrefixItem UnparsedInline)

@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 -- |
 -- Module      :  Text.AsciiDoc.Metadata
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -15,6 +17,8 @@
 module Text.AsciiDoc.Metadata
   ( -- = Metadata Type
     Metadata (..),
+    -- = ToMetadata Class
+    ToMetadata (..),
   )
 where
 
@@ -22,7 +26,11 @@ import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
+import qualified Data.Text as T
+import Text.AsciiDoc.Attributes
 import Text.AsciiDoc.Inlines
+import Data.List.NonEmpty (NonEmpty (..))
+import qualified Data.List.NonEmpty as NE
 
 data Metadata = Metadata
   { metadataStyle :: Maybe (Last Text),
@@ -81,3 +89,42 @@ instance Monoid Metadata where
         metadataNamedAttributes = mempty,
         metadataRoleNamedAttribute = mempty
       }
+
+class ToMetadata a where
+  toMetadata :: a -> Metadata
+
+instance ToMetadata (Int, Attribute) where
+  toMetadata (index, PositionalAttribute p) =
+    mempty {metadataPositionalAttributes = IntMap.singleton index p}
+  -- Special treatment of attribute names: @id@, @opts@, @options@, @role@ and
+  -- @title@.
+  toMetadata (_, NamedAttribute "id" v) =
+    mempty {metadataIds = [v]}
+  toMetadata (_, NamedAttribute "opts" v) =
+    mempty {metadataOptions = [v]}
+  toMetadata (_, NamedAttribute "options" v) =
+    mempty {metadataOptions = [v]}
+  toMetadata (_, NamedAttribute "role" v) =
+    mempty
+      { metadataRoles = T.words v,
+        metadataRoleNamedAttribute = Just $ Last $ T.words v
+      }
+  toMetadata (_, NamedAttribute "title" v) =
+    mempty {metadataTitle = Just $ Last $ parseInline' v}
+  -- Any other named attribute
+  toMetadata (_, NamedAttribute k v) =
+    mempty {metadataNamedAttributes = Map.singleton k v}
+  toMetadata (_, ShorthandSyntaxAttribute s i r o) =
+    mempty
+      { metadataStyle = Just (Last s),
+        metadataIds = i,
+        metadataRoles = r,
+        metadataOptions = o
+      }
+
+instance ToMetadata (NonEmpty Attribute) where
+  toMetadata = foldMap toMetadata . NE.zip (1 :| [2..] :: NonEmpty Int)
+
+-- | Stub until proper inline parsing is implemented.
+parseInline' :: Text -> Inline
+parseInline' = Word
