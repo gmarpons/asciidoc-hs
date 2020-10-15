@@ -29,8 +29,6 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Text.AsciiDoc.Attributes
 import Text.AsciiDoc.Inlines
-import Data.List.NonEmpty (NonEmpty (..))
-import qualified Data.List.NonEmpty as NE
 
 data Metadata = Metadata
   { metadataStyle :: Maybe (Last Text),
@@ -44,6 +42,7 @@ data Metadata = Metadata
     metadataNamedAttributes :: Map.Map Text Text,
     metadataRoleNamedAttribute :: Maybe (Last [Text])
   }
+  deriving (Eq, Show)
 
 instance Semigroup Metadata where
   x <> y =
@@ -122,8 +121,12 @@ instance ToMetadata (Int, Attribute) where
         metadataOptions = o
       }
 
-instance ToMetadata (NonEmpty Attribute) where
-  toMetadata = foldMap toMetadata . NE.zip (1 :| [2..] :: NonEmpty Int)
+instance
+  {-# OVERLAPPABLE #-}
+  (Foldable f, ToMetadata a) =>
+  ToMetadata (f a)
+  where
+  toMetadata = foldMap toMetadata
 
 -- | Stub until proper inline parsing is implemented.
 parseInline' :: Text -> Inline

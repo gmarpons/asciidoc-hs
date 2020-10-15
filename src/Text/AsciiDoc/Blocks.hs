@@ -29,6 +29,7 @@ module Text.AsciiDoc.Blocks
     AttributeId,
     Comment (..),
     MetadataItem (..),
+    BlockPrefixItem (..),
     Block (..),
     UnparsedInline,
     UnparsedLine (..),
@@ -37,6 +38,7 @@ module Text.AsciiDoc.Blocks
     pDocument,
     pBlocks,
     pBlock,
+    pBlockPrefix,
     pAttributeEntry,
     pBlockId,
     pBlockAttributeList,
@@ -66,6 +68,7 @@ module Text.AsciiDoc.Blocks
     parseTest,
     parseFile,
     readTokens,
+    parseInline'',
   )
 where
 
@@ -78,6 +81,7 @@ import Control.Monad.Combinators hiding
   )
 import Control.Monad.Combinators.NonEmpty
 import Data.Char (isSpace)
+import Data.Functor.Identity (Identity, runIdentity)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
@@ -91,6 +95,7 @@ import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
 import qualified Text.Parsec as Parsec
 import Text.Parsec.Char (alphaNum, char, satisfy, space)
+import Data.Maybe (catMaybes)
 
 -- | An explicit header level is necessary, as the output style (e.g. font size)
 -- depends on the actual number of @=@'s found (not the actual nesting level).
@@ -204,7 +209,8 @@ instance ToMetadata (MetadataItem Inline) where
   toMetadata (BlockAttributeList "") = mempty
   toMetadata (BlockAttributeList t) =
     case Parsec.parse Attributes.pAttributeList "" t of
-      Right result -> toMetadata result
+      Right attributes ->
+        toMetadata $ NE.zip (1 :| [2 ..] :: NonEmpty Int) attributes
       Left _ -> error "toMetadata @(MetadataItem Inline): parse should not fail"
 
 data BlockPrefixItem a
@@ -254,6 +260,10 @@ data Block a
   | DanglingBlockPrefix [BlockPrefixItem UnparsedInline]
   deriving (Eq, Show, Functor)
 
+-- INVARIANT: The first element is always a TextLine. This guarantees that an
+-- UnparsedInline can always be converted to an Inline.
+--
+-- TODO: Document how this invariant is preserved.
 type UnparsedInline = NonEmpty UnparsedLine
 
 data UnparsedLine
@@ -281,7 +291,7 @@ instance Monoid State where
         env = mempty
       }
 
-type Parser = Parsec.ParsecT [Text] State IO
+type Parser = Parsec.ParsecT [Text] State Identity
 
 pDocument :: Parser [Block UnparsedInline]
 pDocument = option () pInclude *> pInitialBlankLines *> pBlocks
@@ -581,9 +591,9 @@ satisfyToken matcher = Parsec.tokenPrim show updatePos matcher
     updatePos :: Parsec.SourcePos -> Text -> [Text] -> Parsec.SourcePos
     updatePos pos _ _ = Parsec.incSourceLine pos 1
 
-parseTest :: Parser a -> [Text] -> IO (Either Parsec.ParseError a)
+parseTest :: Parser a -> [Text] -> Either Parsec.ParseError a
 parseTest parser tokens =
-  Parsec.runParserT parser mempty "" tokens
+  runIdentity $ Parsec.runParserT parser mempty "" tokens
 
 readTokens :: FilePath -> IO [Text]
 readTokens file = do
@@ -595,8 +605,18 @@ parseFile ::
   IO (Either Parsec.ParseError [Block UnparsedInline])
 parseFile file = do
   tokens <- readTokens file
-  parseTest pDocument tokens
+  pure $ parseTest pDocument tokens
 
--- | Stub until proper inline parsing is implemented.
+-- | TODO. Stub until proper inline parsing is implemented.
 parseInline' :: Text -> Inline
 parseInline' = Word
+
+-- | TODO. Stub until proper inline parsing is implemented.
+parseInline'' :: UnparsedInline -> Inline
+parseInline'' (TextLine first :| following) =
+  InlineSeq $ Word first :| (catMaybes $ fmap parse following)
+  where
+    parse (TextLine t) = Just $ Word t
+    parse (CommentLine _) = Nothing
+-- See INVARIANT.
+parseInline'' _ = error "parseInline'': First element should be a TextLine"
