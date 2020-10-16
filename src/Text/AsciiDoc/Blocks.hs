@@ -85,6 +85,7 @@ import Data.Functor.Identity (Identity, runIdentity)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
+import Data.Maybe (catMaybes)
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -95,7 +96,6 @@ import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
 import qualified Text.Parsec as Parsec
 import Text.Parsec.Char (alphaNum, char, satisfy, space)
-import Data.Maybe (catMaybes)
 
 -- | An explicit header level is necessary, as the output style (e.g. font size)
 -- depends on the actual number of @=@'s found (not the actual nesting level).
@@ -234,7 +234,7 @@ data Block a
     -- additional "nesting" pass.
     --
     -- There can be a @Section@ inside an, e.g., open block, but it needs to
-    -- have the "discrete" attribute.
+    -- have style @discrete@.
     Section [BlockPrefixItem UnparsedInline] (SectionHeader a) [Block a]
   | -- |
     SectionHeaderBlock [BlockPrefixItem UnparsedInline] (SectionHeader a)
@@ -245,7 +245,7 @@ data Block a
   | -- | Sequence of blocks of some defined type that allows nested blocks
     -- inside (i.e. admonition, sidebar, example, quote, and open block with no
     -- other standard type).
-    Nestable NestableBlockType [BlockPrefixItem UnparsedInline {-State-}] [Block a] -- State
+    Nestable NestableBlockType [BlockPrefixItem UnparsedInline] [Block a]
   | VerseBlock [BlockPrefixItem UnparsedInline] [a]
   | -- | Block type determines substitution group applied: @Verbatim@ or @None@
     -- (aka passthrough).
@@ -271,8 +271,14 @@ data UnparsedLine
   | CommentLine Text
   deriving (Eq, Show)
 
+-- | Custom parser state.
 data State = State
-  { openBlocks :: [(Int, Char)],
+  { -- | A stack of open nestable blocks (first element is the top of the
+    -- stack). We store the syntactic delimiter used to open the block (symbol
+    -- character and number of repetitions of this character), because it is
+    -- what we need to recognize the matching closing delimiter.
+    openBlocks :: [(Int, Char)],
+    -- | An environment mapping attribute names to their values (inlines).
     env :: Map.Map AttributeId Inline
   }
   deriving (Eq, Show)
@@ -400,8 +406,20 @@ pNestable prefix = do
 pSectionHeader ::
   [BlockPrefixItem UnparsedInline] ->
   Parser (Block UnparsedInline)
-pSectionHeader prefix =
-  SectionHeaderBlock <$> pure prefix <*> pSectionHeader' <* many pBlankLine
+pSectionHeader prefix = do
+  state <- Parsec.getState
+  case (openBlocks state, style) of
+    -- If parser is currently inside a nestable block (state.openBlocks not
+    -- null), and the section header we're trying to parse has a style different
+    -- from "discrete", this parser must fail (and the text be considered a
+    -- regular paragraph).
+    (_ : _, Nothing) -> empty
+    (_ : _, Just (Last t)) | t /= "discrete" -> empty
+    -- In any other case: parse as a section header.
+    _ -> do
+      header <- pSectionHeader'
+      _ <- many pBlankLine
+      pure $ SectionHeaderBlock prefix header
   where
     pSectionHeader' =
       ( \(marker, value) ->
@@ -412,6 +430,7 @@ pSectionHeader prefix =
               <$> choice (LP.runOfN 1 ['=']) <* space
                 <*> (LP.satisfy (not . isSpace) <> LP.anyRemainder)
           )
+    style = metadataStyle $ toMetadata $ fmap (fmap parseInline'') prefix
 
 pParagraph :: [BlockPrefixItem UnparsedInline] -> Parser (Block UnparsedInline)
 pParagraph prefix =
