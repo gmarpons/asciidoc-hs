@@ -1,4 +1,7 @@
-module Main where
+module Tests.Inlines
+  ( inlineUnitTests,
+  )
+where
 
 import Data.List.NonEmpty (NonEmpty (..))
 import Test.Tasty
@@ -15,15 +18,6 @@ assertEqualPretty ::
 assertEqualPretty parseResult expected = case parseResult of
   Right actual -> ppDoc actual @?= ppDoc expected
   Left parseError -> assertFailure $ "Parser fails: " <> show parseError
-
-main :: IO ()
-main = defaultMain tests
-
-tests :: TestTree
-tests = testGroup "Tests" [unitTests]
-
-unitTests :: TestTree
-unitTests = testGroup "Unit tests" [inlineUnitTests]
 
 inlineUnitTests :: TestTree
 inlineUnitTests =

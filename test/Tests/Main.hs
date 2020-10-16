@@ -1,6 +1,7 @@
 module Main where
 
 import Test.Tasty
+import Tests.Inlines
 import Tests.Metadata
 
 main :: IO ()
@@ -10,4 +11,9 @@ tests :: TestTree
 tests = testGroup "Tests" [functionalTests]
 
 functionalTests :: TestTree
-functionalTests = testGroup "Functional tests" [metadataUnitTests]
+functionalTests =
+  testGroup
+    "Functional tests"
+    [ inlineUnitTests,
+      metadataUnitTests
+    ]

@@ -75,7 +75,8 @@ test-suite asciidoc-hs-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Tests/Main.hs
-  other-modules:       Tests.Metadata
+  other-modules:       Tests.Inlines
+                       Tests.Metadata
   build-depends:       asciidoc-hs,
                        base >= 4.12.0.0,
                        containers >= 0.6,
