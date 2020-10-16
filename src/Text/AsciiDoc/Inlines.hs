@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 -- |
 -- Module      :  Text.AsciiDoc.Inlines
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -32,6 +33,7 @@ import Control.Monad.Combinators hiding
   )
 import Control.Monad.Combinators.NonEmpty
 import Data.Char hiding (Space)
+import Data.Generics (Data, Typeable)
 import qualified Data.List as L
 import Data.List.NonEmpty ((<|), NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
@@ -137,7 +139,7 @@ data Inline
   | Newline Text
   | StyledText Style (ParameterList Text) Text (NonEmpty Inline) Text
   | InlineSeq (NonEmpty Inline)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Typeable, Data)
 
 instance Semigroup Inline where
   InlineSeq x <> InlineSeq y = InlineSeq (x <> y)
@@ -156,7 +158,7 @@ data Style
   | Monospace
   | Subscript
   | Superscript
-  deriving (Eq, Show)
+  deriving (Eq, Show, Typeable, Data)
 
 makeInline ::
   Scope ->
@@ -260,7 +262,7 @@ pWord =
       isAlphaNum c
 
 newtype ParameterList a = ParameterList a
-  deriving (Eq, Show)
+  deriving (Eq, Show, Data, Typeable)
 
 defaultParameterList :: ParameterList Text
 defaultParameterList = ParameterList ""

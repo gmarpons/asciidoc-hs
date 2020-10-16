@@ -3,9 +3,11 @@ module Tests.Inlines
   )
 where
 
+import Data.Data (Data)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Text (Text)
-import Test.Hspec.Expectations.Pretty
+import ReprTree
+import qualified Test.Hspec.Expectations.Pretty as Pretty
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.AsciiDoc.Inlines
@@ -15,6 +17,9 @@ parseInline t =
   case parseTest pInlines t of
     Right result -> pure result
     Left parseError -> assertFailure $ "Parser fails: " <> show parseError
+
+shouldBe :: (Data a1, Data a2) => a1 -> a2 -> Pretty.Expectation
+shouldBe x y = reprTreeString x `Pretty.shouldBe` reprTreeString y
 
 inlineUnitTests :: TestTree
 inlineUnitTests =
