@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Blocks
@@ -82,7 +82,7 @@ import Control.Monad.Combinators hiding
 import Control.Monad.Combinators.NonEmpty
 import Data.Char (isSpace)
 import Data.Functor.Identity (Identity, runIdentity)
-import Data.List.NonEmpty (NonEmpty (..))
+import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
@@ -277,7 +277,11 @@ data State = State
     -- stack). We store the syntactic delimiter used to open the block (symbol
     -- character and number of repetitions of this character), because it is
     -- what we need to recognize the matching closing delimiter.
-    openBlocks :: [(Int, Char)],
+    --
+    -- The list is non-empty: at the bottom of the list there is always a value
+    -- representing the top-level document, so only one value in the stack
+    -- indicates no nestable block has been open.
+    openBlocks :: NonEmpty ((Int, Char), [Text]),
     -- | An environment mapping attribute names to their values (inlines).
     env :: Map.Map AttributeId Inline
   }
@@ -293,7 +297,9 @@ instance Semigroup State where
 instance Monoid State where
   mempty =
     State
-      { openBlocks = mempty,
+      { -- (0, '*') is an arbitrary value that is always present as the bottom
+        -- of the stack.
+        openBlocks = ((0, '*'), []) :|  [],
         env = mempty
       }
 
@@ -408,11 +414,11 @@ pSectionHeader ::
   Parser (Block UnparsedInline)
 pSectionHeader prefix = do
   state <- Parsec.getState
-  case (openBlocks state, style) of
-    -- If parser is currently inside a nestable block (state.openBlocks not
-    -- null), and the section header we're trying to parse has a style different
-    -- from "discrete", this parser must fail (and the text be considered a
-    -- regular paragraph).
+  case (NE.tail (openBlocks state), style) of
+    -- If parser is currently inside a nestable block (tail ostate.openBlocks is
+    -- not null), and the section header we're trying to parse has a style
+    -- different from "discrete", this parser must fail (and the text be
+    -- considered a regular paragraph).
     (_ : _, Nothing) -> empty
     (_ : _, Just (Last t)) | t /= "discrete" -> empty
     -- In any other case: parse as a section header.
@@ -564,7 +570,7 @@ pInclude = do
 
 pOpenDelimiter :: [Char] -> Parser Char
 pOpenDelimiter cs = do
-  -- Parsec.lookAhead needed here because in case we fail later on(because the
+  -- Parsec.lookAhead needed here because in case we fail later on (because the
   -- block is already open) we don't want to consume any input.
   t <- Parsec.lookAhead $ Parsec.try $ pLineOneOf (LP.runOfN 4 cs)
   -- WARNING! Use of PARTIAL FUNCTION 'T.head': 't' is guaranteed not to be
@@ -574,10 +580,10 @@ pOpenDelimiter cs = do
   -- If block is already open (the delimiter is in the stack of open blocks),
   -- we're not opening it again, but fail. In case we don't fail, we consume the
   -- line that was looked ahead above.
-  case ((n, c) `elem` openBlocks st) of
+  case (n, c) `elem` (fst <$> openBlocks st) of
     True -> empty
     False -> do
-      Parsec.putState (st {openBlocks = (n, c) : openBlocks st})
+      Parsec.putState (st {openBlocks = ((n, c), []) <| openBlocks st})
       -- Consume one token (aka one line of input), and following blanklines
       _ <- pLine $ LP.anyRemainder
       _ <- many pBlankLine
@@ -587,18 +593,23 @@ pOpenDelimiter cs = do
 pCloseDelimiter :: Parser ()
 pCloseDelimiter = do
   st <- Parsec.getState
-  case openBlocks st of
-    (n, c) : bs -> do
+  let ((n, c), _) = NE.head (openBlocks st)
+  case NE.tail (openBlocks st) of
+    -- In presence of DanglingBlockPrefix'es, we can try to pop from an
+    -- openBlocks stack that contains the initial open block only. We do nothing
+    -- in this case.
+    [] -> pure ()
+    b : bs -> do
       -- If (n, c) found in openBlocks stack, pop one element. Only consume line
       -- from input (and look for includes) if the found delimiter matches
       -- openBlocks' top.
       _ <-
         pLine (LP.count n (char c))
-          <|> Parsec.lookAhead (choice $ fmap (\(n', c') -> pLine' (LP.count n' (char c'))) bs)
-      Parsec.putState $ st {openBlocks = drop 1 (openBlocks st)}
-    -- In presence of DanglingBlockPrefix'es, we can try to pop from an empty
-    -- openBlocks stack
-    [] -> pure ()
+          <|> Parsec.lookAhead
+            ( choice $
+                fmap (\((n', c'), _) -> pLine' (LP.count n' (char c'))) (b : bs)
+            )
+      Parsec.putState $ st {openBlocks = b :| bs}
 
 -- TODO: Add name to source positions (possibly storing current filename when an
 -- inline arrives).
