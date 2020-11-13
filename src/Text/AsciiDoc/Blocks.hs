@@ -85,7 +85,7 @@ import Data.Functor.Identity (Identity, runIdentity)
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (mapMaybe)
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -205,7 +205,7 @@ data MetadataItem a
 
 instance ToMetadata (MetadataItem Inline) where
   toMetadata (BlockId i) = mempty {metadataIds = [i]}
-  toMetadata (BlockTitle t) = mempty {metadataTitle = Just $ Last $ t}
+  toMetadata (BlockTitle t) = mempty {metadataTitle = Just $ Last t}
   toMetadata (BlockAttributeList "") = mempty
   toMetadata (BlockAttributeList t) =
     case Parsec.parse Attributes.pAttributeList "" t of
@@ -299,7 +299,7 @@ instance Monoid State where
     State
       { -- (0, '*') is an arbitrary value that is always present as the bottom
         -- of the stack.
-        openBlocks = ((0, '*'), []) :|  [],
+        openBlocks = ((0, '*'), []) :| [],
         env = mempty
       }
 
@@ -376,20 +376,20 @@ pAttributeEntry = pAttributeEntry' <* many pBlankLine
 pBlockId :: Parser (BlockPrefixItem a)
 pBlockId = pBlockId' <* many pBlankLine
   where
-    pBlockId' = (MetadataItem . BlockId) <$> pLine LP.blockId
+    pBlockId' = MetadataItem . BlockId <$> pLine LP.blockId
 
 pBlockAttributeList :: Parser (BlockPrefixItem a)
 pBlockAttributeList = pBlockAttributeList' <* many pBlankLine
   where
     pBlockAttributeList' =
-      (MetadataItem . BlockAttributeList)
+      MetadataItem . BlockAttributeList
         <$> pLine LP.blockAttributeList
 
 pBlockTitle :: Parser (BlockPrefixItem UnparsedInline)
 pBlockTitle = pBlockTitle' <* many pBlankLine
   where
     pBlockTitle' =
-      (MetadataItem . BlockTitle . (:| []) . TextLine)
+      MetadataItem . BlockTitle . (:| []) . TextLine
         <$> pLine (LP.string "." *> (LP.satisfy (not . isSpace) <> LP.anyRemainder))
 
 -- | Parses a nestable delimited block.
@@ -466,7 +466,7 @@ pParagraph prefix =
                      -- BlockId, starts with "[["
                      Parsec.try LP.blockId,
                      -- BlockAttributeList, starts with "["
-                     pure "" <$> LP.blockAttributeList,
+                     "" <$ LP.blockAttributeList,
                      -- BlankLine
                      pure ""
                    ]
@@ -580,15 +580,17 @@ pOpenDelimiter cs = do
   -- If block is already open (the delimiter is in the stack of open blocks),
   -- we're not opening it again, but fail. In case we don't fail, we consume the
   -- line that was looked ahead above.
-  case (n, c) `elem` (fst <$> openBlocks st) of
-    True -> empty
-    False -> do
-      Parsec.putState (st {openBlocks = ((n, c), []) <| openBlocks st})
-      -- Consume one token (aka one line of input), and following blanklines
-      _ <- pLine $ LP.anyRemainder
-      _ <- many pBlankLine
-      -- satisfyToken (const $ Just ())
-      pure c
+  if (n, c) `elem` (fst <$> openBlocks st)
+    then empty
+    else
+      ( do
+          Parsec.putState (st {openBlocks = ((n, c), []) <| openBlocks st})
+          -- Consume one token (aka one line of input), and following blanklines
+          _ <- pLine LP.anyRemainder
+          _ <- many pBlankLine
+          -- satisfyToken (const $ Just ())
+          pure c
+      )
 
 pCloseDelimiter :: Parser ()
 pCloseDelimiter = do
@@ -644,7 +646,7 @@ parseInline' = Word
 -- | TODO. Stub until proper inline parsing is implemented.
 parseInline'' :: UnparsedInline -> Inline
 parseInline'' (TextLine first :| following) =
-  InlineSeq $ Word first :| (catMaybes $ fmap parse following)
+  InlineSeq $ Word first :| mapMaybe parse following
   where
     parse (TextLine t) = Just $ Word t
     parse (CommentLine _) = Nothing
