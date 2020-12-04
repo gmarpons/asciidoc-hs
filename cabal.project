@@ -1,0 +1,5 @@
+packages:
+  ./
+
+optional-packages:
+  ./parsec-free

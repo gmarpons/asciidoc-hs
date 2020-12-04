@@ -65,13 +65,11 @@ module Text.AsciiDoc.Blocks
     satisfyToken,
 
     -- * Testing
-    parseTest,
-    parseFile,
-    readTokens,
     parseInline'',
   )
 where
 
+import Control.Arrow (Arrow ((&&&)))
 import Control.Monad.Combinators hiding
   ( endBy1,
     sepBy1,
@@ -81,7 +79,6 @@ import Control.Monad.Combinators hiding
   )
 import Control.Monad.Combinators.NonEmpty
 import Data.Char (isSpace)
-import Data.Functor.Identity (Identity, runIdentity)
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
@@ -89,13 +86,13 @@ import Data.Maybe (mapMaybe)
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import Debug.Trace
 import qualified Text.AsciiDoc.Attributes as Attributes
-import Text.AsciiDoc.Inlines hiding (parseTest)
+import Text.AsciiDoc.Inlines
 import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
 import qualified Text.Parsec as Parsec
-import Text.Parsec.Char (alphaNum, char, satisfy, space)
+import Text.Parsec.Char (alphaNum, char, space)
 
 -- | An explicit header level is necessary, as the output style (e.g. font size)
 -- depends on the actual number of @=@'s found (not the actual nesting level).
@@ -303,15 +300,15 @@ instance Monoid State where
         env = mempty
       }
 
-type Parser = Parsec.ParsecT [Text] State Identity
+type Parser m = Parsec.ParsecT [Text] State m
 
-pDocument :: Parser [Block UnparsedInline]
+pDocument :: Monad m => Parser m [Block UnparsedInline]
 pDocument = option () pInclude *> pInitialBlankLines *> pBlocks
 
-pBlocks :: Parser [Block UnparsedInline]
+pBlocks :: Monad m => Parser m [Block UnparsedInline]
 pBlocks = many pBlock
 
-pBlock :: Parser (Block UnparsedInline)
+pBlock :: Monad m => Parser m (Block UnparsedInline)
 pBlock = do
   prefix <- option [] (NE.toList <$> pBlockPrefix)
   pBlock' prefix
@@ -322,7 +319,7 @@ pBlock = do
         <|> pParagraph prefix
         <|> pDanglingBlockPrefix prefix
 
-pBlockPrefix :: Parser (NonEmpty (BlockPrefixItem UnparsedInline))
+pBlockPrefix :: Monad m => Parser m (NonEmpty (BlockPrefixItem UnparsedInline))
 pBlockPrefix = some pBlockPrefixItem
   where
     pBlockPrefixItem =
@@ -333,7 +330,7 @@ pBlockPrefix = some pBlockPrefixItem
         <|> pBlockAttributeList
         <|> pBlockTitle
 
-pBlockComment :: Parser Comment
+pBlockComment :: Monad m => Parser m Comment
 pBlockComment = do
   delimiter <- choice $ fmap pLine' $ LP.runOfN 4 ['/']
   let n = T.length delimiter
@@ -346,18 +343,19 @@ pBlockComment = do
   option () pInclude
   _ <- many pBlankLine
   pure $ BlockComment ts
+{-# ANN pBlockComment ("HLint: ignore" :: String) #-}
 
-pLineCommentSequence :: Parser Comment
+pLineCommentSequence :: Monad m => Parser m Comment
 pLineCommentSequence =
   LineCommentSequence <$> some pLineComment <* many pBlankLine
 
 -- | Parses a line starting with *exactly* two '/'s.
-pLineComment :: Parser Text
+pLineComment :: Monad m => Parser m Text
 pLineComment =
   pLine (LP.string "//" *> Parsec.notFollowedBy (char '/') *> LP.anyRemainder)
 
 -- TODO. Add attribute continuations.
-pAttributeEntry :: Parser (BlockPrefixItem a)
+pAttributeEntry :: Monad m => Parser m (BlockPrefixItem a)
 pAttributeEntry = pAttributeEntry' <* many pBlankLine
   where
     pAttributeEntry' = do
@@ -373,19 +371,19 @@ pAttributeEntry = pAttributeEntry' <* many pBlankLine
       Parsec.modifyState $ \st -> st {env = Map.insert k v' (env st)}
       pure $ AttributeEntry k $ Just (parseInline' v)
 
-pBlockId :: Parser (BlockPrefixItem a)
+pBlockId :: Monad m => Parser m (BlockPrefixItem a)
 pBlockId = pBlockId' <* many pBlankLine
   where
     pBlockId' = MetadataItem . BlockId <$> pLine LP.blockId
 
-pBlockAttributeList :: Parser (BlockPrefixItem a)
+pBlockAttributeList :: Monad m => Parser m (BlockPrefixItem a)
 pBlockAttributeList = pBlockAttributeList' <* many pBlankLine
   where
     pBlockAttributeList' =
       MetadataItem . BlockAttributeList
         <$> pLine LP.blockAttributeList
 
-pBlockTitle :: Parser (BlockPrefixItem UnparsedInline)
+pBlockTitle :: Monad m => Parser m (BlockPrefixItem UnparsedInline)
 pBlockTitle = pBlockTitle' <* many pBlankLine
   where
     pBlockTitle' =
@@ -393,7 +391,10 @@ pBlockTitle = pBlockTitle' <* many pBlankLine
         <$> pLine (LP.string "." *> (LP.satisfy (not . isSpace) <> LP.anyRemainder))
 
 -- | Parses a nestable delimited block.
-pNestable :: [BlockPrefixItem UnparsedInline] -> Parser (Block UnparsedInline)
+pNestable ::
+  Monad m =>
+  [BlockPrefixItem UnparsedInline] ->
+  Parser m (Block UnparsedInline)
 pNestable prefix = do
   {-st1 <- Parsec.getState-}
   delimiter <- pOpenDelimiter ['=', '*']
@@ -407,11 +408,12 @@ pNestable prefix = do
 
 -- | Parses a section header and computes its level.
 --
--- POST-CONDITION: The computed level is greater or equal to 0. This follows
+-- __POST-CONDITION__: The computed level is greater or equal to 0. This follows
 -- from the fact that 'LP.runOfN 1' can only return texts of length >= 1.
 pSectionHeader ::
+  Monad m =>
   [BlockPrefixItem UnparsedInline] ->
-  Parser (Block UnparsedInline)
+  Parser m (Block UnparsedInline)
 pSectionHeader prefix = do
   state <- Parsec.getState
   case (NE.tail (openBlocks state), style) of
@@ -473,17 +475,18 @@ pParagraph prefix =
             )
 
 pDanglingBlockPrefix ::
+  Monad m =>
   [BlockPrefixItem UnparsedInline] ->
-  Parser (Block UnparsedInline)
+  Parser m (Block UnparsedInline)
 pDanglingBlockPrefix [] = empty
 pDanglingBlockPrefix prefix =
   DanglingBlockPrefix prefix
     <$ Parsec.lookAhead (pCloseDelimiter <|> Parsec.eof)
 
-pInitialBlankLines :: Parser [Text]
+pInitialBlankLines :: Monad m => Parser m [Text]
 pInitialBlankLines = many pBlankLine
 
-pBlankLine :: Parser Text
+pBlankLine :: Monad m => Parser m Text
 pBlankLine = pLine $ pure ""
 
 -- | Argument can be a parser for the beginning of the line. Function checks
@@ -492,7 +495,7 @@ pBlankLine = pLine $ pure ""
 -- If the line is parsed successfully, this combinator checks if an include line
 -- follows. If that is the case it inserts the corresponding lines into the
 -- input stream of the parser.
-pLine :: LP.LineParser a -> Parser a
+pLine :: Monad m => LP.LineParser a -> Parser m a
 pLine p = do
   result <- pLine' p
   option () pInclude
@@ -500,7 +503,7 @@ pLine p = do
 
 -- | A version of 'pLine' that does not check if the line is followed by an
 -- include.
-pLine' :: LP.LineParser a -> Parser a
+pLine' :: Monad m => LP.LineParser a -> Parser m a
 pLine' p = satisfyToken $
   \t -> f $ Parsec.parse (p <* many space <* Parsec.eof) "" t
   where
@@ -517,7 +520,7 @@ pLine' p = satisfyToken $
 --
 -- If blank lines need to be accepted, add @pure ""@ as the last element of
 -- @ps@.
-pLineOneOf :: [LP.LineParser a] -> Parser a
+pLineOneOf :: Monad m => [LP.LineParser a] -> Parser m a
 pLineOneOf parsers = do
   result <- pLineOneOf'
   option () pInclude
@@ -540,7 +543,7 @@ pLineOneOf parsers = do
 --
 -- If blank lines need to excluded from acceptance, add @pure ""@ as the last
 -- element of @ps@.
-pLineNoneOf :: [LP.LineParser a] -> Parser Text
+pLineNoneOf :: Monad m => [LP.LineParser a] -> Parser m Text
 pLineNoneOf parsers = do
   result <- pLineNoneOf'
   option () pInclude
@@ -553,22 +556,24 @@ pLineNoneOf parsers = do
     f _ (Right _) = Nothing
     f t (Left _) = Just t
 
-pInclude :: Parser ()
-pInclude = do
-  (filename, arguments) <-
-    pLine' $
-      (,)
-        <$ LP.string "include::"
-        <*> LP.many (satisfy (/= '[')) <* char '['
-        <*> LP.many (satisfy (/= ']')) <* char ']'
-  current <- Parsec.getInput
-  -- TODO. Read actual file content, this is a stub.
-  Parsec.setInput $ ["// (STUB) include::" <> filename <> "[" <> arguments <> "]"] <> current
-  -- Recursive call to handle the case in which the first line of the included
-  -- file is also an include.
-  option () pInclude
+pInclude :: Parser m ()
+pInclude = empty
 
-pOpenDelimiter :: [Char] -> Parser Char
+-- pInclude = do
+--   (filename, arguments) <-
+--     pLine' $
+--       (,)
+--         <$ LP.string "include::"
+--         <*> LP.many (satisfy (/= '[')) <* char '['
+--         <*> LP.many (satisfy (/= ']')) <* char ']'
+--   current <- Parsec.getInput
+--   -- TODO. Read actual file content, this is a stub.
+--   Parsec.setInput $ ["// (STUB) include::" <> filename <> "[" <> arguments <> "]"] <> current
+--   -- Recursive call to handle the case in which the first line of the included
+--   -- file is also an include.
+--   option () pInclude
+
+pOpenDelimiter :: Monad m => [Char] -> Parser m Char
 pOpenDelimiter cs = do
   -- Parsec.lookAhead needed here because in case we fail later on (because the
   -- block is already open) we don't want to consume any input.
@@ -592,7 +597,7 @@ pOpenDelimiter cs = do
           pure c
       )
 
-pCloseDelimiter :: Parser ()
+pCloseDelimiter :: Monad m => Parser m ()
 pCloseDelimiter = do
   st <- Parsec.getState
   let ((n, c), _) = NE.head (openBlocks st)
@@ -617,27 +622,12 @@ pCloseDelimiter = do
 -- inline arrives).
 --
 -- TODO: Fix line numbering in the presence of includes.
-satisfyToken :: (Text -> Maybe a) -> Parser a
+satisfyToken :: Monad m => (Text -> Maybe a) -> Parser m a
 satisfyToken matcher = Parsec.tokenPrim show updatePos matcher
   where
     updatePos :: Parsec.SourcePos -> Text -> [Text] -> Parsec.SourcePos
     updatePos pos _ _ = Parsec.incSourceLine pos 1
-
-parseTest :: Parser a -> [Text] -> Either Parsec.ParseError a
-parseTest parser tokens =
-  runIdentity $ Parsec.runParserT parser mempty "" tokens
-
-readTokens :: FilePath -> IO [Text]
-readTokens file = do
-  t <- T.readFile file
-  pure $ T.lines t
-
-parseFile ::
-  FilePath ->
-  IO (Either Parsec.ParseError [Block UnparsedInline])
-parseFile file = do
-  tokens <- readTokens file
-  pure $ parseTest pDocument tokens
+{-# ANN satisfyToken ("HLint: ignore" :: String) #-}
 
 -- | TODO. Stub until proper inline parsing is implemented.
 parseInline' :: Text -> Inline

@@ -92,3 +92,28 @@ test-suite asciidoc-hs-test
   default-extensions:  LambdaCase,
                        OverloadedStrings
   ghc-options:         -Wall
+
+library debug-with-parsec-free
+  hs-source-dirs:      src
+  exposed-modules:     Text.AsciiDoc.Debug.ParseTest
+  other-modules:       Text.AsciiDoc.Blocks
+                       Text.AsciiDoc.Attributes
+                       Text.AsciiDoc.Inlines
+                       Text.AsciiDoc.LineParsers
+                       Text.AsciiDoc.Metadata
+                       Text.AsciiDoc.Pandoc
+                       Text.AsciiDoc.SourceRange
+  build-depends:       base >= 4.12.0.0,
+                       containers >= 0.6,
+                       mtl,
+                       optics-core >= 0.2,
+                       pandoc-types >= 1.20,
+                       parsec-free == 3.1.11.7,
+                       parser-combinators >= 1.2.0,
+                       pretty-simple >= 4.0,
+                       syb >= 0.7.1,
+                       text >= 1.2.0
+  default-language:    Haskell2010
+  default-extensions:  LambdaCase,
+                       OverloadedStrings
+  ghc-options:         -Wall

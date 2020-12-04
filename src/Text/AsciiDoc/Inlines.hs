@@ -18,7 +18,6 @@ module Text.AsciiDoc.Inlines
     Style (..),
     ParameterList (..),
     defaultParameterList,
-    parseTest,
     initialState,
   )
 where
@@ -35,24 +34,19 @@ import Control.Monad.Combinators.NonEmpty
 import Data.Char hiding (Space)
 import Data.Generics (Data, Typeable)
 import qualified Data.List as L
-import Data.List.NonEmpty ((<|), NonEmpty (..))
+import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Debug.Trace as Debug
 import qualified Text.Parsec as Parsec
-  ( ParseError,
-    Parsec,
+  ( Parsec,
     char,
     eof,
-    getPosition,
     getState,
     lookAhead,
     modifyState,
     putState,
-    runParser,
-    sourceColumn,
     try,
   )
 import qualified Text.Parsec.Char as Parsec
@@ -337,13 +331,13 @@ pScope_ applicability ps = do
       filter (\(Scope _ _ applicability' _) -> applicability == applicability') $
         defaultScopes
 
-pPushDebug arg = do
-  pos <- Parsec.getPosition
-  nextChar <- pAnd Parsec.anyChar <|> pure 'E'
-  st <- Parsec.getState
-  Debug.traceShowM ("Debug. Push" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained st)), reverse (scopes st))
-  res <- pPush arg
-  pure res
+-- pPushDebug arg = do
+--   pos <- Parsec.getPosition
+--   nextChar <- pAnd Parsec.anyChar <|> pure 'E'
+--   st <- Parsec.getState
+--   Debug.traceShowM ("Debug. Push" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained st)), reverse (scopes st))
+--   res <- pPush arg
+--   pure res
 
 -- | It does neither consume input nor modify state field @acceptConstrained@.
 --
@@ -393,13 +387,13 @@ pPush scopeCandidates = do
         (Nothing, _) -> pure ()
         _ -> empty
 
-pPopDebug arg = do
-  s <- Parsec.getState
-  pos <- Parsec.getPosition
-  nextChar <- pAnd Parsec.anyChar <|> pure 'E'
-  Debug.traceShowM ("Debug. Pop" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained s)), reverse (scopes s))
-  res <- pPop arg
-  pure res
+-- pPopDebug arg = do
+--   s <- Parsec.getState
+--   pos <- Parsec.getPosition
+--   nextChar <- pAnd Parsec.anyChar <|> pure 'E'
+--   Debug.traceShowM ("Debug. Pop" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained s)), reverse (scopes s))
+--   res <- pPop arg
+--   pure res
 
 -- | It does neither consume input nor modify state field @acceptConstrained@.
 --
@@ -450,10 +444,10 @@ pPop canAcceptConstrainedClose =
             _ : tail_ ->
               -- Slightly convoluted way to compare heads of close markers to
               -- avoid calling @head@
-              any (== '_')
-                $ fmap fst
-                $ catMaybes
-                $ fmap (L.uncons . closeMarker) tail_
+              any (== '_') $
+                fmap fst $
+                  catMaybes $
+                    fmap (L.uncons . closeMarker) tail_
             [] -> False
       () <$ Parsec.satisfy (\c -> not (isAlphaNum c || (c == '_' && not exception)))
         <|> Parsec.eof
@@ -465,11 +459,11 @@ pPop canAcceptConstrainedClose =
     pRulePop2 :: Scope -> [Scope] -> Parser ()
     pRulePop2 s ss = do
       let maybeSuffixes =
-            NE.nonEmpty
-              $ filter (/= "")
-              $ catMaybes
-              $ fmap (closeMarker s `L.stripPrefix`)
-              $ fmap closeMarker ss
+            NE.nonEmpty $
+              filter (/= "") $
+                catMaybes $
+                  fmap (closeMarker s `L.stripPrefix`) $
+                    fmap closeMarker ss
       case maybeSuffixes of
         Just suffixes -> do
           (optional $ choice $ fmap (\t -> Parsec.string t) suffixes) >>= \case
@@ -486,7 +480,3 @@ pFallback =
 -- 'Parsec.try'.
 pAnd :: Parser a -> Parser a
 pAnd p = Parsec.lookAhead (Parsec.try p)
-
-parseTest :: Parser a -> Text -> Either Parsec.ParseError a
-parseTest parser text =
-  Parsec.runParser parser initialState "" text

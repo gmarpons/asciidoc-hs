@@ -15,11 +15,9 @@
 module Text.AsciiDoc.LineParsers
   ( -- = Line Parser type
     LineParser,
-
     -- = Concrete Parsers
     blockId,
     blockAttributeList,
-
     -- = Generic Parsers
     runOfN,
     anyRemainder,
@@ -41,9 +39,8 @@ import qualified Control.Monad.Combinators as PC hiding
     some,
     someTill,
   )
-
 import qualified Control.Monad.Combinators.NonEmpty as PC
-import Data.Char (isAlphaNum, isSpace, isDigit, isLetter, ord)
+import Data.Char (isAlphaNum, isDigit, isLetter, isSpace, ord)
 import Data.Functor.Identity (Identity)
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
@@ -126,7 +123,8 @@ runOfN n = fmap $ \c -> count n (Parsec.char c) <> many (Parsec.char c)
 -- | Returns (parses successfully) the remaining text of the line, whatever its
 -- content.
 anyRemainder :: LineParser Text
-anyRemainder = Parsec.getInput <* Parsec.setInput ""
+-- anyRemainder = Parsec.getInput <* Parsec.setInput ""
+anyRemainder = many Parsec.anyChar
 
 many :: MonadPlus f => f Char -> f Text
 many p = T.pack <$> PC.many p
@@ -135,7 +133,7 @@ manyText :: MonadPlus f => f Text -> f Text
 manyText p = T.concat <$> PC.many p
 
 some :: MonadPlus f => f Char -> f Text
-some p = (T.pack . NE.toList) <$> PC.some p
+some p = T.pack . NE.toList <$> PC.some p
 
 count :: Monad f => Int -> f Char -> f Text
 count m p = T.pack <$> PC.count m p
