@@ -19,6 +19,7 @@ module Text.AsciiDoc.Inlines
     ParameterList (..),
     defaultParameterList,
     initialState,
+    Parser,
   )
 where
 

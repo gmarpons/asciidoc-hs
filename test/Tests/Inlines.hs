@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Tests.Inlines
   ( inlineUnitTests,
   )
@@ -6,17 +8,22 @@ where
 import Data.Data (Data)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Text (Text)
-import ReprTree
+import ReprTree (reprTreeString)
 import qualified Test.Hspec.Expectations.Pretty as Pretty
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.AsciiDoc.Inlines
+import qualified Text.Parsec as Parsec
 
 parseInline :: Text -> IO Inline
 parseInline t =
   case parseTest pInlines t of
     Right result -> pure result
     Left parseError -> assertFailure $ "Parser fails: " <> show parseError
+
+parseTest :: Parser a -> Text -> Either Parsec.ParseError a
+parseTest parser text =
+  Parsec.runParser parser initialState "" text
 
 shouldBe :: (Data a1, Data a2) => a1 -> a2 -> Pretty.Expectation
 shouldBe x y = reprTreeString x `Pretty.shouldBe` reprTreeString y

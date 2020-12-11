@@ -5,12 +5,13 @@ where
 
 import qualified Data.IntMap as IntMap
 import Data.List.NonEmpty (NonEmpty (..))
-import Data.Semigroup (Last (..))
 import qualified Data.Map as Map
+import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import Test.Hspec.Expectations.Pretty
 import Test.Tasty
 import Test.Tasty.HUnit
+import Tests.Blocks (parseTest)
 import Text.AsciiDoc.Blocks
 import Text.AsciiDoc.Inlines (Inline (..))
 import Text.AsciiDoc.Metadata
