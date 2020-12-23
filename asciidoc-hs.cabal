@@ -1,120 +1,116 @@
-cabal-version:       2.4
-name:                asciidoc-hs
-version:             0.1.0.0
-synopsis:            AsciiDoc parser that can be used as a Pandoc front-end
+cabal-version:          2.4
+name:                   asciidoc-hs
+version:                0.1.0.0
+synopsis:               AsciiDoc parser that can be used as a Pandoc front-end
 -- description:
-homepage:            https://github.com/gmarpons/asciidoc-hs
-bug-reports:         https://github.com/gmarpons/asciidoc-hs/issues
-tested-with:         GHC==8.10.1
-license:             BSD-3-Clause
-license-file:        LICENSE
-author:              Guillem Marpons
-maintainer:          gmarpons@mailbox.org
-copyright:           Guillem Marpons 2020
-category:            Text
-extra-source-files:  CHANGELOG.adoc,
-                     README.adoc
+homepage:               https://github.com/gmarpons/asciidoc-hs
+bug-reports:            https://github.com/gmarpons/asciidoc-hs/issues
+tested-with:            GHC==8.10.1
+license:                BSD-3-Clause
+license-file:           LICENSE
+author:                 Guillem Marpons
+maintainer:             gmarpons@mailbox.org
+copyright:              Guillem Marpons 2020
+category:               Text
+extra-source-files:     CHANGELOG.adoc,
+                        README.adoc
 
 library
-  hs-source-dirs:      src
-  exposed-modules:     Text.AsciiDoc.Attributes
-                       Text.AsciiDoc.Blocks
-                       Text.AsciiDoc.Inlines
-                       Text.AsciiDoc.LineParsers
-                       Text.AsciiDoc.Metadata
-                       Text.AsciiDoc.Pandoc
-                       Text.AsciiDoc.SourceRange
-  -- other-modules:
-  build-depends:       base >= 4.12.0.0,
-                       containers >= 0.6,
-                       optics-core >= 0.2,
-                       pandoc-types >= 1.20,
-                       parsec >= 3.1.0,
-                       parser-combinators >= 1.2.0,
-                       syb >= 0.7.1,
-                       text >= 1.2.0
-  default-language:    Haskell2010
-  default-extensions:  LambdaCase,
-                       OverloadedStrings
-  -- other-extensions:
-  ghc-options:         -Wall
-                       -Wincomplete-uni-patterns
-                       -Wincomplete-record-updates
-                       -Wcompat
-                       -Widentities
-                       -Wredundant-constraints
-                       -Wmissing-export-lists
-                       -Wpartial-fields
-                       -fhide-source-paths
-                       -freverse-errors
+  hs-source-dirs:       src
+  exposed-modules:      Text.AsciiDoc.Attributes
+                        Text.AsciiDoc.Blocks
+                        Text.AsciiDoc.Inlines
+                        Text.AsciiDoc.LineParsers
+                        Text.AsciiDoc.Metadata
+                        Text.AsciiDoc.Pandoc
+                        Text.AsciiDoc.SourceRange
+  build-depends:        base >= 4.12.0.0,
+                        containers >= 0.6,
+                        optics-core >= 0.2,
+                        pandoc-types >= 1.20,
+                        parsec >= 3.1.0,
+                        parser-combinators >= 1.2.0,
+                        syb >= 0.7.1,
+                        text >= 1.2.0
+  default-language:     Haskell2010
+  default-extensions:   LambdaCase,
+                        OverloadedStrings
+  ghc-options:          -Wall
+                        -Wincomplete-uni-patterns
+                        -Wincomplete-record-updates
+                        -Wcompat
+                        -Widentities
+                        -Wredundant-constraints
+                        -Wmissing-export-lists
+                        -Wpartial-fields
+                        -fhide-source-paths
+                        -freverse-errors
 
 executable asciidoc-hs
-  hs-source-dirs:      exe
-  main-is:             Main.hs
-  -- other-modules:
-  build-depends:       asciidoc-hs,
-                       aeson >= 1.4.7,
-                       base >= 4.12.0.0,
-                       parsec >= 3.1.0,
-                       text >= 1.2.0
-  default-language:    Haskell2010
-  default-extensions:  LambdaCase,
-                       OverloadedStrings
-  -- other-extensions:
-  ghc-options:         -Wall
-                       -Wincomplete-uni-patterns
-                       -Wincomplete-record-updates
-                       -Wcompat
-                       -Widentities
-                       -Wredundant-constraints
-                       -Wmissing-export-lists
-                       -Wpartial-fields
-                       -fhide-source-paths
-                       -freverse-errors
+  hs-source-dirs:       exe
+  main-is:              Main.hs
+  build-depends:        asciidoc-hs,
+                        aeson >= 1.4.7,
+                        base >= 4.12.0.0,
+                        parsec >= 3.1.0,
+                        text >= 1.2.0
+  default-language:     Haskell2010
+  default-extensions:   LambdaCase,
+                        OverloadedStrings
+  ghc-options:          -Wall
+                        -Wincomplete-uni-patterns
+                        -Wincomplete-record-updates
+                        -Wcompat
+                        -Widentities
+                        -Wredundant-constraints
+                        -Wmissing-export-lists
+                        -Wpartial-fields
+                        -fhide-source-paths
+                        -freverse-errors
 
 test-suite asciidoc-hs-test
-  type:                exitcode-stdio-1.0
-  hs-source-dirs:      test
-  main-is:             Tests/Main.hs
-  other-modules:       Tests.Blocks
-                       Tests.Inlines
-                       Tests.Metadata
-  build-depends:       asciidoc-hs,
-                       base >= 4.12.0.0,
-                       containers >= 0.6,
-                       hspec-expectations-pretty-diff >= 0.7.2.5,
-                       parsec >= 3.1.0,
-                       pretty-show >= 1.10,
-                       repr-tree-syb >= 0.1,
-                       tasty,
-                       tasty-hunit-compat >= 0.2,
-                       text >= 1.2.0
-  default-language:    Haskell2010
-  default-extensions:  LambdaCase,
-                       OverloadedStrings
-  ghc-options:         -Wall
+  type:                 exitcode-stdio-1.0
+  hs-source-dirs:       test
+  main-is:              Tests/Main.hs
+  other-modules:        Tests.Blocks
+                        Tests.Inlines
+                        Tests.Metadata
+  build-depends:        asciidoc-hs,
+                        base >= 4.12.0.0,
+                        containers >= 0.6,
+                        hspec-expectations-pretty-diff >= 0.7.2.5,
+                        parsec >= 3.1.0,
+                        pretty-show >= 1.10,
+                        repr-tree-syb >= 0.1,
+                        tasty,
+                        tasty-hunit-compat >= 0.2,
+                        text >= 1.2.0
+  default-language:     Haskell2010
+  default-extensions:   LambdaCase,
+                        OverloadedStrings
+  ghc-options:          -Wall
 
 library debug-with-parsec-free
-  hs-source-dirs:      src
-  exposed-modules:     Text.AsciiDoc.Debug.ParseTest
-  other-modules:       Text.AsciiDoc.Blocks
-                       Text.AsciiDoc.Attributes
-                       Text.AsciiDoc.Inlines
-                       Text.AsciiDoc.LineParsers
-                       Text.AsciiDoc.Metadata
-                       Text.AsciiDoc.Pandoc
-                       Text.AsciiDoc.SourceRange
-  build-depends:       base >= 4.12.0.0,
-                       containers >= 0.6,
-                       mtl,
-                       optics-core >= 0.2,
-                       pandoc-types >= 1.20,
-                       parsec-free == 3.1.11.7,
-                       parser-combinators >= 1.2.0,
-                       pretty-simple >= 4.0,
-                       syb >= 0.7.1,
-                       text >= 1.2.0
-  default-language:    Haskell2010
-  default-extensions:  LambdaCase,
-                       OverloadedStrings
-  ghc-options:         -Wall
+  hs-source-dirs:       src
+  exposed-modules:      Text.AsciiDoc.Debug.ParseTest
+  other-modules:        Text.AsciiDoc.Blocks
+                        Text.AsciiDoc.Attributes
+                        Text.AsciiDoc.Inlines
+                        Text.AsciiDoc.LineParsers
+                        Text.AsciiDoc.Metadata
+                        Text.AsciiDoc.Pandoc
+                        Text.AsciiDoc.SourceRange
+  build-depends:        base >= 4.12.0.0,
+                        containers >= 0.6,
+                        mtl,
+                        optics-core >= 0.2,
+                        pandoc-types >= 1.20,
+                        parsec-free == 3.1.11.7,
+                        parser-combinators >= 1.2.0,
+                        pretty-simple >= 4.0,
+                        syb >= 0.7.1,
+                        text >= 1.2.0
+  default-language:     Haskell2010
+  default-extensions:   LambdaCase,
+                        OverloadedStrings
+  ghc-options:          -Wall
