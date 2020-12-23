@@ -88,7 +88,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Debug.Trace
 import qualified Text.AsciiDoc.Attributes as Attributes
-import Text.AsciiDoc.Inlines
+import Text.AsciiDoc.Inlines hiding (Parser)
 import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
 import qualified Text.Parsec as Parsec
@@ -417,7 +417,7 @@ pSectionHeader ::
 pSectionHeader prefix = do
   state <- Parsec.getState
   case (NE.tail (openBlocks state), style) of
-    -- If parser is currently inside a nestable block (tail ostate.openBlocks is
+    -- If parser is currently inside a nestable block (tail state.openBlocks is
     -- not null), and the section header we're trying to parse has a style
     -- different from "discrete", this parser must fail (and the text be
     -- considered a regular paragraph).
@@ -435,7 +435,7 @@ pSectionHeader prefix = do
       )
         <$> pLine
           ( (,)
-              <$> choice (LP.runOfN 1 ['=']) <* space
+              <$> choice (LP.runOfN 1 ['=']) <* some space
                 <*> (LP.satisfy (not . isSpace) <> LP.anyRemainder)
           )
     style = metadataStyle $ toMetadata $ fmap (fmap parseInline'') prefix
@@ -628,10 +628,6 @@ satisfyToken matcher = Parsec.tokenPrim show updatePos matcher
     updatePos :: Parsec.SourcePos -> Text -> [Text] -> Parsec.SourcePos
     updatePos pos _ _ = Parsec.incSourceLine pos 1
 {-# ANN satisfyToken ("HLint: ignore" :: String) #-}
-
--- | TODO. Stub until proper inline parsing is implemented.
-parseInline' :: Text -> Inline
-parseInline' = Word
 
 -- | TODO. Stub until proper inline parsing is implemented.
 parseInline'' :: UnparsedInline -> Inline

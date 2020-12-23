@@ -19,6 +19,8 @@ module Text.AsciiDoc.Metadata
     Metadata (..),
     -- = ToMetadata Class
     ToMetadata (..),
+    -- = Utility functions
+    parseInline',
   )
 where
 
