@@ -29,7 +29,10 @@ blockUnitTests =
   testGroup
     "block unit tests"
     [ paragraphUnitTests,
-      sectionHeaderUnitTests
+      sectionHeaderUnitTests,
+      danglingBlockPrefixUnitTests,
+      nestableUnitTests
+      -- listUnitTests,
     ]
 
 paragraphUnitTests :: TestTree
@@ -49,7 +52,7 @@ paragraphUnitTests =
               "Bar"
             ]
         p `shouldBe` [Paragraph [] (TextLine "Foo" :| [TextLine "Bar"])],
-      testCase "paragraph followed by blankline" $ do
+      testCase "paragraph followed by blank line" $ do
         p <-
           parseDocument
             [ "Foo",
@@ -91,7 +94,7 @@ paragraphUnitTests =
                          ]
                          (TextLine "Foo" :| [])
                      ],
-      testCase "paragraph with block prefix containing blanklines" $ do
+      testCase "paragraph with block prefix containing blank lines" $ do
         p <-
           parseDocument
             [ ".Foo",
@@ -196,7 +199,7 @@ sectionHeaderUnitTests =
                          ),
                        Paragraph [] (TextLine "Bar" :| [])
                      ],
-      testCase "section header followed by blankline and paragraph" $ do
+      testCase "section header followed by blank line and paragraph" $ do
         p <-
           parseDocument
             [ "= Foo",
@@ -267,4 +270,239 @@ sectionHeaderUnitTests =
             [ " = Foo"
             ]
         p `shouldBe` [Paragraph [] (TextLine " = Foo" :| [])]
+    ]
+
+danglingBlockPrefixUnitTests :: TestTree
+danglingBlockPrefixUnitTests =
+  testGroup
+    "dangling block prefix unit tests"
+    [ testCase "single dangling block prefix" $ do
+        p <- parseDocument ["[[Foo]]"]
+        p `shouldBe` [DanglingBlockPrefix [MetadataItem (BlockId "Foo")]],
+      testCase "dangling block prefix at eof and after blank line" $ do
+        p <-
+          parseDocument
+            [ "",
+              "[[Foo]]"
+            ]
+        p `shouldBe` [DanglingBlockPrefix [MetadataItem (BlockId "Foo")]],
+      testCase "dangling block prefix at eof and after paragraph" $ do
+        p <-
+          parseDocument
+            [ "Foo",
+              "[[Foo]]"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         []
+                         (TextLine "Foo" :| []),
+                       DanglingBlockPrefix [MetadataItem (BlockId "Foo")]
+                     ],
+      testCase "dangling block prefix at end of example block" $ do
+        p <-
+          parseDocument
+            [ "====",
+              "Foo",
+              "",
+              "[[Bar]]",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         []
+                         [ Paragraph [] (TextLine "Foo" :| []),
+                           DanglingBlockPrefix [MetadataItem (BlockId "Bar")]
+                         ]
+                     ]
+    ]
+
+nestableUnitTests :: TestTree
+nestableUnitTests =
+  testGroup
+    "nestable block unit tests"
+    [ testCase "simple example block" $ do
+        p <-
+          parseDocument
+            [ "====",
+              "Foo",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         []
+                         [Paragraph [] (TextLine "Foo" :| [])]
+                     ],
+      testCase "simple sidebar block" $ do
+        p <-
+          parseDocument
+            [ "****",
+              "Foo",
+              "****"
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Sidebar
+                         []
+                         [Paragraph [] (TextLine "Foo" :| [])]
+                     ],
+      testCase "example block containing two paragraphs" $ do
+        p <-
+          parseDocument
+            [ "====",
+              "Foo",
+              "",
+              "Bar",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         []
+                         [ Paragraph [] (TextLine "Foo" :| []),
+                           Paragraph [] (TextLine "Bar" :| [])
+                         ]
+                     ],
+      testCase "example block with block title" $ do
+        p <-
+          parseDocument
+            [ ".Foo",
+              "====",
+              "Bar",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         [MetadataItem (BlockTitle (TextLine "Foo" :| []))]
+                         [Paragraph [] (TextLine "Bar" :| [])]
+                     ],
+      testCase "sidebar nested into example block" $ do
+        p <-
+          parseDocument
+            [ "====",
+              "****",
+              "Bar",
+              "****",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         []
+                         [ Nestable
+                             Sidebar
+                             []
+                             [ Paragraph [] (TextLine "Bar" :| [])
+                             ]
+                         ]
+                     ],
+      testCase "sidebar nested into example block and following paragraph" $ do
+        p <-
+          parseDocument
+            [ "====",
+              "Foo",
+              "****",
+              "Bar",
+              "****",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         []
+                         [ Paragraph [] (TextLine "Foo" :| []),
+                           Nestable
+                             Sidebar
+                             []
+                             [ Paragraph [] (TextLine "Bar" :| [])
+                             ]
+                         ]
+                     ],
+      testCase "sidebar nested into example block and following blank line" $ do
+        p <-
+          parseDocument
+            [ "====",
+              "",
+              "****",
+              "Bar",
+              "****",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         []
+                         [ Nestable
+                             Sidebar
+                             []
+                             [ Paragraph [] (TextLine "Bar" :| [])
+                             ]
+                         ]
+                     ],
+      testCase "example block nested into example block and following paragraph" $ do
+        p <-
+          parseDocument
+            [ "====",
+              "Foo",
+              "======",
+              "Bar",
+              "======",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         []
+                         [ Paragraph [] (TextLine "Foo" :| []),
+                           Nestable
+                             Example
+                             []
+                             [ Paragraph [] (TextLine "Bar" :| [])
+                             ]
+                         ]
+                     ],
+      testCase "unfinished sidebar nested into example block" $ do
+        p <-
+          parseDocument
+            [ "====",
+              "Foo",
+              "****",
+              "Bar",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         []
+                         [ Paragraph [] (TextLine "Foo" :| []),
+                           Nestable
+                             Sidebar
+                             []
+                             [ Paragraph [] (TextLine "Bar" :| [])
+                             ]
+                         ]
+                     ],
+      testCase "unfinished example block nested into example block" $ do
+        p <-
+          parseDocument
+            [ "====",
+              "Foo",
+              "======",
+              "Bar",
+              "===="
+            ]
+        p
+          `shouldBe` [ Nestable
+                         Example
+                         []
+                         [ Paragraph [] (TextLine "Foo" :| []),
+                           Nestable
+                             Example
+                             []
+                             [ Paragraph [] (TextLine "Bar" :| [])
+                             ]
+                         ]
+                     ]
     ]
