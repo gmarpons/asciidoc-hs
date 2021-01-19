@@ -82,15 +82,15 @@ import Data.Char (isSpace)
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
-import Debug.Trace
 import qualified Text.AsciiDoc.Attributes as Attributes
 import Text.AsciiDoc.Inlines hiding (Parser)
 import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
+import Text.Parsec ((<?>))
 import qualified Text.Parsec as Parsec
 import Text.Parsec.Char (alphaNum, char, space)
 
@@ -306,21 +306,22 @@ pDocument :: Monad m => Parser m [Block UnparsedInline]
 pDocument = option () pInclude *> pInitialBlankLines *> pBlocks
 
 pBlocks :: Monad m => Parser m [Block UnparsedInline]
-pBlocks = many pBlock
+pBlocks = many (pBlock []) <?> "blocks"
 
-pBlock :: Monad m => Parser m (Block UnparsedInline)
-pBlock = do
+pBlock :: Monad m => [LP.LineParser Text] -> Parser m (Block UnparsedInline)
+pBlock extraParagraphFinalizers = do
   prefix <- option [] (NE.toList <$> pBlockPrefix)
-  pBlock' prefix
+  pBlock' prefix <?> "block"
   where
     pBlock' prefix =
-      pNestable prefix
-        <|> pSectionHeader prefix
-        <|> pParagraph prefix
-        <|> pDanglingBlockPrefix prefix
+      (pNestable prefix <?> "nestable")
+        <|> (pSectionHeader prefix <?> "section header")
+        <|> (pList prefix <?> "list")
+        <|> (pParagraph prefix extraParagraphFinalizers <?> "paragraph")
+        <|> (pDanglingBlockPrefix prefix <?> "dangling block prefix")
 
 pBlockPrefix :: Monad m => Parser m (NonEmpty (BlockPrefixItem UnparsedInline))
-pBlockPrefix = some pBlockPrefixItem
+pBlockPrefix = some pBlockPrefixItem <?> "block prefix"
   where
     pBlockPrefixItem =
       Comment <$> pBlockComment
@@ -396,14 +397,12 @@ pNestable ::
   [BlockPrefixItem UnparsedInline] ->
   Parser m (Block UnparsedInline)
 pNestable prefix = do
-  {-st1 <- Parsec.getState-}
   delimiter <- pOpenDelimiter ['=', '*']
-  {-st2 <- Parsec.getState-}
-  bs <- manyTill pBlock $ eitherP pCloseDelimiter Parsec.eof
+  bs <- manyTill (pBlock []) $ eitherP pCloseDelimiter Parsec.eof
   _ <- many pBlankLine
   pure $ case delimiter of
-    '=' -> Nestable Example prefix {-st1-} bs {-st2-}
-    '*' -> Nestable Sidebar prefix {-st1-} bs {-st2-}
+    '=' -> Nestable Example prefix bs
+    '*' -> Nestable Sidebar prefix bs
     x -> error $ "pNestable: unexpected character '" <> show x <> "'"
 
 -- | Parses a section header and computes its level.
@@ -440,13 +439,101 @@ pSectionHeader prefix = do
           )
     style = metadataStyle $ toMetadata $ fmap (fmap parseInline'') prefix
 
-pParagraph :: [BlockPrefixItem UnparsedInline] -> Parser (Block UnparsedInline)
-pParagraph prefix =
-  Paragraph <$> pure prefix <*> pParagraph' <* many pBlankLine
+pList ::
+  (Monad m) =>
+  [BlockPrefixItem UnparsedInline] ->
+  Parser m (Block UnparsedInline)
+pList prefix =
+  pList' prefix <* many pBlankLine
+  where
+    allUnorderedMarkers = LP.runOfN 1 ['-', '*']
+    pList' prefix' = do
+      state <- Parsec.getState
+      let allowedMarkers = allUnorderedMarkers
+          -- Disallow as markers those markers already in use in the current
+          -- list tree of the innermost open block
+          disallowedMarkers = snd currentBlock
+          (currentBlock, otherBlocks) = NE.head &&& NE.tail $ openBlocks state
+      -- Accept item with a new marker
+      (marker, firstLine) <-
+        pItemFirstLine allowedMarkers disallowedMarkers
+      -- Add new marker to the state
+      Parsec.setState $
+        state
+          { openBlocks =
+              (fst currentBlock, marker : disallowedMarkers) :| otherBlocks
+          }
+      -- Complete the first item, using the already parsed first line
+      firstItem <- pItem firstLine <?> "first item " <> T.unpack marker
+      -- Accept items with the same marker of the first item
+      let pMarker = LP.string (T.unpack marker)
+      nextItems <-
+        many
+          ( pItemFirstLine [pMarker] []
+              >>= pItem . snd <?> "item " <> T.unpack marker
+          )
+      -- Recover state present at the beginning of the function. Functions like
+      -- pItem could have modified it.
+      Parsec.setState state
+      pure $ List (Unordered Nothing) prefix' (firstItem :| nextItems)
+    pItemFirstLine =
+      \x -> pLine . itemFirstLine x
+    itemFirstLine :: [LP.LineParser Text] -> [Text] -> LP.LineParser (Text, Text)
+    itemFirstLine allowedMarkers disallowedMarkers = do
+      _ <- many space
+      marker <- choice allowedMarkers
+      if marker `elem` disallowedMarkers
+        then empty
+        else do
+          _ <- some space
+          remainder <- LP.satisfy (not . isSpace) <> LP.anyRemainder
+          pure (marker, remainder)
+    pItem firstLine = do
+      -- As we are inside a list, any list marker is a finalizer of the current
+      -- item (no blank line needed)
+      nextLines <-
+        many $
+          pParagraphContinuation [snd <$> itemFirstLine allUnorderedMarkers []]
+      nextBlocks <-
+        option
+          []
+          ( ((: []) <$> pSublist <?> "sublist")
+              <|> catMaybes <$> many (pListContinuation <?> "list continuation")
+              <?> "next blocks"
+          )
+      _ <- many pBlankLine
+      pure $ Paragraph [] (TextLine firstLine :| nextLines) :| nextBlocks
+    -- __Divergence DVB001 from Asciidoctor__. Before sublist:
+    --
+    --     * Full prefix (including attributes and block title) is allowed.
+    --
+    --     * Any number of blank lines is allowed.
+    --
+    -- Probably a linter should warn against any block prefix not preceded by
+    -- blank lines.
+    pSublist = Parsec.try $ do
+      _ <- many pBlankLine
+      prefix' <- option [] (NE.toList <$> pBlockPrefix)
+      pList prefix'
+    -- __Divergence DVB002 from Asciidoctor__: As in classic AsciiDoc, no blank
+    -- lines are allowed before the @+@ sign.
+    pListContinuation :: Monad m => Parser m (Maybe (Block UnparsedInline))
+    pListContinuation =
+      pLine (LP.char '+')
+        *> optional pBlankLine
+        *> optional (pBlock [snd <$> itemFirstLine allUnorderedMarkers []])
+
+pParagraph ::
+  Monad m =>
+  [BlockPrefixItem UnparsedInline] ->
+  [LP.LineParser Text] ->
+  Parser m (Block UnparsedInline)
+pParagraph prefix extraFinalizers =
+  Paragraph prefix <$> pParagraph' <* many pBlankLine
   where
     pParagraph' =
-      (:|) <$> pFirst <*> many pFollowing
-    pFirst, pFollowing :: Parser UnparsedLine
+      (:|) <$> pFirst <*> many (pParagraphContinuation extraFinalizers <?> "paragraph continuation")
+    pFirst :: Monad m => Parser m UnparsedLine
     pFirst =
       TextLine
         <$> pLineNoneOf
@@ -457,22 +544,27 @@ pParagraph prefix =
                    pure ""
                  ]
           )
-    -- Line comments (but not block comments!) can be contained in a paragraph.
-    pFollowing =
-      CommentLine <$> pLineComment
-        <|> TextLine
-          <$> pLineNoneOf
+
+-- Line comments (but not block comments!) can be contained in a paragraph.
+pParagraphContinuation :: Monad m => [LP.LineParser Text] -> Parser m UnparsedLine
+pParagraphContinuation extraFinalizers =
+  CommentLine <$> pLineComment
+    <|> TextLine
+      <$> pLineNoneOf
+        ( fmap Parsec.try extraFinalizers
             -- Nestable | BlockComment
-            ( LP.runOfN 4 ['=', '*', '/']
-                <> [
-                     -- BlockId, starts with "[["
-                     Parsec.try LP.blockId,
-                     -- BlockAttributeList, starts with "["
-                     "" <$ LP.blockAttributeList,
-                     -- BlankLine
-                     pure ""
-                   ]
-            )
+            <> LP.runOfN 4 ['=', '*', '/']
+            <> [
+                 -- BlockId, starts with "[["
+                 Parsec.try LP.blockId,
+                 -- BlockAttributeList, starts with "["
+                 "" <$ LP.blockAttributeList,
+                 -- New block introducer, '+'
+                 Parsec.try (LP.char '+'),
+                 -- BlankLine
+                 pure ""
+               ]
+        )
 
 pDanglingBlockPrefix ::
   Monad m =>

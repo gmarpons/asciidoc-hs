@@ -23,6 +23,9 @@ import qualified Text.Pretty.Simple as Pretty
 
 data OutputType = Result | Log
 
+-- | Usage example:
+--
+-- > cabal repl asciidoc-hs:library:debug-with-parsec-free <<< 'parseFile pDocument Log "input.adoc"' > output.txt
 parseFile ::
   Show a =>
   ParsecT [Text] State (ReaderT LogType IO) a ->

@@ -31,8 +31,10 @@ blockUnitTests =
     [ paragraphUnitTests,
       sectionHeaderUnitTests,
       danglingBlockPrefixUnitTests,
-      nestableUnitTests
-      -- listUnitTests,
+      nestableUnitTests,
+      unorderedListUnitTests,
+      nestedListsUnitTests,
+      listContinuationUnitTests
     ]
 
 paragraphUnitTests :: TestTree
@@ -124,6 +126,17 @@ paragraphUnitTests =
                        DanglingBlockPrefix
                          [ MetadataItem (BlockTitle (TextLine "Foo" :| []))
                          ]
+                     ],
+      testCase "paragraph with second line resembling block title" $ do
+        p <-
+          parseDocument
+            [ "Foo",
+              ".Bar"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         []
+                         (TextLine "Foo" :| [TextLine ".Bar"])
                      ]
     ]
 
@@ -263,7 +276,7 @@ sectionHeaderUnitTests =
                       }
                   )
             },
-      -- TODO. Must change when intented quoted text is implemented
+      -- TODO. Must change when indented literal paragraphs are implemented.
       testCase "false section header (space before '=')" $ do
         p <-
           parseDocument
@@ -504,5 +517,629 @@ nestableUnitTests =
                              [ Paragraph [] (TextLine "Bar" :| [])
                              ]
                          ]
+                     ]
+    ]
+
+unorderedListUnitTests :: TestTree
+unorderedListUnitTests =
+  testGroup
+    "unordered list unit tests"
+    [ testCase "simple unordered list using '-' (hyphen)" $ do
+        p <-
+          parseDocument
+            [ "- Foo",
+              "- Bar",
+              "- Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( (Paragraph [] (TextLine "Foo" :| []) :| [])
+                             :| [ Paragraph [] (TextLine "Bar" :| []) :| [],
+                                  Paragraph [] (TextLine "Baz" :| []) :| []
+                                ]
+                         )
+                     ],
+      testCase "simple unordered list using '*' (asterisk)" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "* Bar",
+              "* Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( (Paragraph [] (TextLine "Foo" :| []) :| [])
+                             :| [ Paragraph [] (TextLine "Bar" :| []) :| [],
+                                  Paragraph [] (TextLine "Baz" :| []) :| []
+                                ]
+                         )
+                     ],
+      testCase "unordered list with irregular indentation" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "  * Bar",
+              " * Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( (Paragraph [] (TextLine "Foo" :| []) :| [])
+                             :| [ Paragraph [] (TextLine "Bar" :| []) :| [],
+                                  Paragraph [] (TextLine "Baz" :| []) :| []
+                                ]
+                         )
+                     ],
+      testCase "unordered list with indented first item" $ do
+        p <-
+          parseDocument
+            [ "Foo",
+              "",
+              "  * Bar",
+              "* Baz"
+            ]
+        p
+          `shouldBe` [ Paragraph [] (TextLine "Foo" :| []),
+                       List
+                         (Unordered Nothing)
+                         []
+                         ( (Paragraph [] (TextLine "Bar" :| []) :| [])
+                             :| [ Paragraph [] (TextLine "Baz" :| []) :| []
+                                ]
+                         )
+                     ],
+      testCase "unordered list with irregular line spacing" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "",
+              "",
+              "* Bar",
+              "",
+              "* Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( (Paragraph [] (TextLine "Foo" :| []) :| [])
+                             :| [ Paragraph [] (TextLine "Bar" :| []) :| [],
+                                  Paragraph [] (TextLine "Baz" :| []) :| []
+                                ]
+                         )
+                     ],
+      testCase "unordered list with multi-line paragraphs" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "Bar",
+              "* Baz",
+              "  Qux"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( (Paragraph [] (TextLine "Foo" :| [TextLine "Bar"]) :| [])
+                             :| [Paragraph [] (TextLine "Baz" :| [TextLine "  Qux"]) :| []]
+                         )
+                     ],
+      testCase "unordered list item with literal second paragraph" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "",
+              " Bar"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               -- TODO. Add when indented literal paragraphs are
+                               -- implemented:
+                               --
+                               --  :| [QUOTED [] (TextLine "Bar" :| [])]
+                               :| []
+                           )
+                             :| []
+                         ),
+                       -- TODO. Remove when indented literal paragraphs are
+                       -- implemented:
+                       Paragraph [] (TextLine " Bar" :| [])
+                     ],
+      testCase "two unordered lists separated by a paragraph" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "",
+              "Bar",
+              "",
+              "* Baz",
+              "* Qux"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ((Paragraph [] (TextLine "Foo" :| []) :| []) :| []),
+                       Paragraph [] (TextLine "Bar" :| []),
+                       List
+                         (Unordered Nothing)
+                         []
+                         ( (Paragraph [] (TextLine "Baz" :| []) :| [])
+                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                         )
+                     ],
+      testCase "unordered list followed up by consecutive example block" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "====",
+              "Bar",
+              "===="
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ((Paragraph [] (TextLine "Foo" :| []) :| []) :| []),
+                       Nestable
+                         Example
+                         []
+                         [Paragraph [] (TextLine "Bar" :| [])]
+                     ]
+    ]
+
+nestedListsUnitTests :: TestTree
+nestedListsUnitTests =
+  testGroup
+    "nested lists unit tests"
+    [ testCase "unordered list using '-' (hyphen) nested into list using '*' (asterisk)" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "- Bar",
+              "- Baz",
+              "* Qux"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      []
+                                      ( (Paragraph [] (TextLine "Bar" :| []) :| [])
+                                          :| [Paragraph [] (TextLine "Baz" :| []) :| []]
+                                      )
+                                  ]
+                           )
+                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                         )
+                     ],
+      testCase "nested unordered lists using increasing number of '*' (asterisk)" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "** Bar",
+              "*** Baz",
+              "* Qux"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      []
+                                      ( ( Paragraph [] (TextLine "Bar" :| [])
+                                            :| [ List
+                                                   (Unordered Nothing)
+                                                   []
+                                                   ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                                               ]
+                                        )
+                                          :| []
+                                      )
+                                  ]
+                           )
+                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                         )
+                     ],
+      testCase "nested unordered lists with blank lines interspersed" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "",
+              "** Bar",
+              "",
+              "*** Baz",
+              "",
+              "* Qux"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      []
+                                      ( ( Paragraph [] (TextLine "Bar" :| [])
+                                            :| [ List
+                                                   (Unordered Nothing)
+                                                   []
+                                                   ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                                               ]
+                                        )
+                                          :| []
+                                      )
+                                  ]
+                           )
+                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                         )
+                     ],
+      testCase "nested unordered lists using unordered number of '*' (asterisk)" $ do
+        p <-
+          parseDocument
+            [ "** Foo",
+              "* Bar",
+              "*** Baz",
+              " ** Qux"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      []
+                                      ( ( Paragraph [] (TextLine "Bar" :| [])
+                                            :| [ List
+                                                   (Unordered Nothing)
+                                                   []
+                                                   ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                                               ]
+                                        )
+                                          :| []
+                                      )
+                                  ]
+                           )
+                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                         )
+                     ],
+      testCase "nested unordered list with multi-line paragraph" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "- Bar",
+              "Baz",
+              "* Qux"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      []
+                                      ( (Paragraph [] (TextLine "Bar" :| [TextLine "Baz"]) :| [])
+                                          :| []
+                                      )
+                                  ]
+                           )
+                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                         )
+                     ],
+      testCase "(DVB001) nested unordered list with block prefixes" $ do
+        p <-
+          parseDocument
+            [ "[.red]",
+              ".FooFoo",
+              "* Foo",
+              "[.blue]",
+              ".BarBar",
+              "- Bar",
+              "[.green]",
+              ".BazBaz",
+              "- Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         [ MetadataItem (BlockAttributeList ".red"),
+                           MetadataItem (BlockTitle (TextLine "FooFoo" :| []))
+                         ]
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      [ MetadataItem (BlockAttributeList ".blue"),
+                                        MetadataItem (BlockTitle (TextLine "BarBar" :| []))
+                                      ]
+                                      ( (Paragraph [] (TextLine "Bar" :| []) :| [])
+                                          :| []
+                                      )
+                                  ]
+                           )
+                             :| []
+                         ),
+                       List
+                         (Unordered Nothing)
+                         [ MetadataItem (BlockAttributeList ".green"),
+                           MetadataItem (BlockTitle (TextLine "BazBaz" :| []))
+                         ]
+                         ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                     ],
+      -- Identical result to the previous test case.
+      testCase "(DVB001) nested unordered list with block prefixes and some blank lines" $ do
+        p <-
+          parseDocument
+            [ "[.red]",
+              ".FooFoo",
+              "",
+              "* Foo",
+              "[.blue]",
+              "",
+              ".BarBar",
+              "- Bar",
+              "",
+              "[.green]",
+              ".BazBaz",
+              "- Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         [ MetadataItem (BlockAttributeList ".red"),
+                           MetadataItem (BlockTitle (TextLine "FooFoo" :| []))
+                         ]
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      [ MetadataItem (BlockAttributeList ".blue"),
+                                        MetadataItem (BlockTitle (TextLine "BarBar" :| []))
+                                      ]
+                                      ( (Paragraph [] (TextLine "Bar" :| []) :| [])
+                                          :| []
+                                      )
+                                  ]
+                           )
+                             :| []
+                         ),
+                       List
+                         (Unordered Nothing)
+                         [ MetadataItem (BlockAttributeList ".green"),
+                           MetadataItem (BlockTitle (TextLine "BazBaz" :| []))
+                         ]
+                         ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                     ]
+    ]
+
+listContinuationUnitTests :: TestTree
+listContinuationUnitTests =
+  testGroup
+    "list continuation unit tests"
+    [ testCase "list continuation (paragraph), followed by another list item" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "+",
+              "Bar",
+              "* Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [Paragraph [] (TextLine "Bar" :| [])]
+                           )
+                             :| [Paragraph [] (TextLine "Baz" :| []) :| []]
+                         )
+                     ],
+      testCase "two list continuations (paragraph), followed by another list item" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "+",
+              "Bar",
+              "+",
+              "Baz",
+              "* Qux"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ Paragraph [] (TextLine "Bar" :| []),
+                                    Paragraph [] (TextLine "Baz" :| [])
+                                  ]
+                           )
+                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                         )
+                     ],
+      testCase "list continuation (paragraph) with a block prefix" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "+",
+              "[.red]",
+              "Bar"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ Paragraph
+                                      [MetadataItem (BlockAttributeList ".red")]
+                                      (TextLine "Bar" :| [])
+                                  ]
+                           )
+                             :| []
+                         )
+                     ],
+      testCase "list continuation (example block), followed by another list item" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "+",
+              "====",
+              "Bar",
+              "====",
+              "* Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [Nestable Example [] [Paragraph [] (TextLine "Bar" :| [])]]
+                           )
+                             :| [Paragraph [] (TextLine "Baz" :| []) :| []]
+                         )
+                     ],
+      testCase "list continuation into a nested unordered list" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "** Bar",
+              "+",
+              "Baz",
+              "* Qux"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      []
+                                      ( ( Paragraph [] (TextLine "Bar" :| [])
+                                            :| [Paragraph [] (TextLine "Baz" :| [])]
+                                        )
+                                          :| []
+                                      )
+                                  ]
+                           )
+                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                         )
+                     ],
+      testCase "dangling list continuation marker in outermost list" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "+",
+              "", -- Asciidoctor allows this optional blank line here
+              "",
+              "Bar"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ((Paragraph [] (TextLine "Foo" :| []) :| []) :| []),
+                       Paragraph [] (TextLine "Bar" :| [])
+                     ],
+      testCase "dangling list continuation marker into a nested unordered list" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "** Bar",
+              "+",
+              "", -- Asciidoctor allows this optional blank line here
+              "",
+              "Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      []
+                                      ((Paragraph [] (TextLine "Bar" :| []) :| []) :| [])
+                                  ]
+                           )
+                             :| []
+                         ),
+                       Paragraph [] (TextLine "Baz" :| [])
+                     ],
+      testCase "(DVB002) broken list continuation attempt in outermost list" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "",
+              "+",
+              "Bar"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ((Paragraph [] (TextLine "Foo" :| []) :| []) :| []),
+                       Paragraph [] (TextLine "+" :| [TextLine "Bar"])
+                     ],
+      testCase "(DVB002) broken list continuation attempt in nested list" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              "** Bar",
+              "",
+              "+",
+              "Baz"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                               :| [ List
+                                      (Unordered Nothing)
+                                      []
+                                      ((Paragraph [] (TextLine "Bar" :| []) :| []) :| [])
+                                  ]
+                           )
+                             :| []
+                         ),
+                       Paragraph [] (TextLine "+" :| [TextLine "Baz"])
+                     ],
+      testCase "line break that resembles list continuation" $ do
+        p <-
+          parseDocument
+            [ "* Foo",
+              " +",
+              "Bar"
+            ]
+        p
+          `shouldBe` [ List
+                         (Unordered Nothing)
+                         []
+                         -- TODO. Must be changed when line breaks are
+                         -- implemented.
+                         ( ( Paragraph
+                               []
+                               ( TextLine "Foo"
+                                   :| [ TextLine " +",
+                                        TextLine "Bar"
+                                      ]
+                               )
+                               :| []
+                           )
+                             :| []
+                         )
                      ]
     ]
