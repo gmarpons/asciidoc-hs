@@ -1,0 +1,3 @@
+[submodule "parsec-free"]
+	path = parsec-free
+	url = https://github.com/gmarpons/parsec-free.git
