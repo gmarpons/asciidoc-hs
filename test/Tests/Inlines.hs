@@ -43,13 +43,13 @@ simpleInlineTests :: TestTree
 simpleInlineTests =
   testGroup
     "Simple inlines"
-    [ testCase "Single-line, no formatting markers" $ do
+    [ testCase "Single-line, no formatting marks" $ do
         i <- parseInline "some words with no format"
         i `shouldBe` InlineSeq (Word "some" :| [Space " ", Word "words", Space " ", Word "with", Space " ", Word "no", Space " ", Word "format"]),
       -- testCase "Space at the beginning" $ assertBool "Parser doesn't fail"
       --   $ isLeft
       --   $ parseTest pInlines " some words preceded by space",
-      testCase "No formatting markers with space at the end" $ do
+      testCase "No formatting marks with space at the end" $ do
         i <- parseInline "some words with no format "
         i `shouldBe` InlineSeq (Word "some" :| [Space " ", Word "words", Space " ", Word "with", Space " ", Word "no", Space " ", Word "format", Space " "])
     ]
@@ -73,7 +73,7 @@ boldInlineTests =
       testCase "Two words in bold at the end" $ do
         i <- parseInline "a *few words*"
         i `shouldBe` InlineSeq (Word "a" :| [Space " ", StyledText Bold defaultParameterList "*" (Word "few" :| [Space " ", Word "words"]) "*"]),
-      testCase "Bad bold ending with closing marker after space and before word" $ do
+      testCase "Bad bold ending with closing mark after space and before word" $ do
         i <- parseInline "*a *few words"
         i `shouldBe` InlineSeq (Symbol "*" :| [Word "a", Space " ", Symbol "*", Word "few", Space " ", Word "words"]),
       testCase "Asterisk in the middle of bold phrase" $ do
@@ -96,17 +96,17 @@ boldInlineTests =
 unconstrainedStylingTests :: TestTree
 unconstrainedStylingTests =
   testGroup
-    "Unconstrained styling markers"
+    "Unconstrained formatting marks"
     [ testCase "Nesting unconstrained inside constrained, with no space" $ do
         i <- parseInline "#a##b##c#"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "#" (Word "a" :| [StyledText Custom defaultParameterList "##" (Word "b" :| []) "##", Word "c"]) "#" :| []),
-      testCase "Unpaired opening marker before correctly closed unconstrained scope" $ do
+      testCase "Unpaired opening mark before correctly closed unconstrained scope" $ do
         i <- parseInline "#a##b##"
         i `shouldBe` InlineSeq (Symbol "#" :| [Word "a", StyledText Custom defaultParameterList "##" (Word "b" :| []) "##"]),
       testCase "Double nesting, with space (Asciidoctor does not respect nesting rule)" $ do
         i <- parseInline "## #a ##b## c# ##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Space " " :| [StyledText Custom defaultParameterList "#" (Word "a" :| [Space " ", StyledText Custom defaultParameterList "##" (Word "b" :| []) "#", Space " ", Word "c"]) "#"]) "##" :| []),
-      testCase "Unpaired opening marker directly inside unconstrained scope (libasciidoc fails test)" $ do
+      testCase "Unpaired opening mark directly inside unconstrained scope (libasciidoc fails test)" $ do
         i <- parseInline "## #a b ##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Space " " :| [Symbol "#", Word "a", Space " ", Word "b", Space " "]) "##" :| []),
       testCase "Nesting constrained directly inside unconstrained, with no space" $ do
@@ -118,10 +118,10 @@ unconstrainedStylingTests =
       testCase "Unconstrained scope with space inside" $ do
         i <- parseInline "## a ##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Space " " :| [Word "a", Space " "]) "##" :| []),
-      testCase "Unbalanced markers, one missing on the left" $ do
+      testCase "Unbalanced marks, one missing on the left" $ do
         i <- parseInline "##a#"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "#" (Symbol "#" :| [Word "a"]) "#" :| []),
-      testCase "Unbalanced markers, one missing on the right" $ do
+      testCase "Unbalanced marks, one missing on the right" $ do
         i <- parseInline "#a##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "#" (Word "a" :| []) "#" :| [Symbol "#"]),
       testCase "Nesting constrained directly inside unconstrained, with space" $ do
@@ -136,16 +136,16 @@ unconstrainedStylingTests =
       testCase "Two unconstrained scopes, false nesting" $ do
         i <- parseInline "##a ##b## c##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Word "a" :| [Space " "]) "##" :| [Word "b", StyledText Custom defaultParameterList "##" (Space " " :| [Word "c"]) "##"]),
-      testCase "Unpaierd opening marker inside unconstrained scope" $ do
+      testCase "Unpaierd opening mark inside unconstrained scope" $ do
         i <- parseInline "##a #b ##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Word "a" :| [Space " ", Symbol "#", Word "b", Space " "]) "##" :| []),
-      testCase "Unpaired closing marker inside unconstrained scope" $ do
+      testCase "Unpaired closing mark inside unconstrained scope" $ do
         i <- parseInline "##a b# ##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Word "a" :| [Space " ", Word "b", Symbol "#", Space " "]) "##" :| []),
-      testCase "Unpaired marker between space inside unconstrained scope" $ do
+      testCase "Unpaired mark between space inside unconstrained scope" $ do
         i <- parseInline "##a # ##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Word "a" :| [Space " ", Symbol "#", Space " "]) "##" :| []),
-      testCase "Double marker ending constrained scope" $ do
+      testCase "Double mark ending constrained scope" $ do
         i <- parseInline "#a ## b#"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "#" (Word "a" :| [Space " ", Symbol "#"]) "#" :| [Space " ", Word "b", Symbol "#"]),
       testCase "Nesting constrained inside unconstrained, with spaces one side" $ do
@@ -154,7 +154,7 @@ unconstrainedStylingTests =
       testCase "Nesting unconstrained inside constrained, with spaces one side" $ do
         i <- parseInline "#a ##b## c#"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "#" (Word "a" :| [Space " ", StyledText Custom defaultParameterList "##" (Word "b" :| []) "##", Space " ", Word "c"]) "#" :| []),
-      testCase "Unpaired opening marker inside constrained scope" $ do
+      testCase "Unpaired opening mark inside constrained scope" $ do
         i <- parseInline "#a ##b c#"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "#" (Word "a" :| [Space " ", Symbol "#", Symbol "#", Word "b", Space " ", Word "c"]) "#" :| [])
     ]

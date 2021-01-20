@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+
 -- |
 -- Module      :  Text.AsciiDoc.Inlines
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -23,7 +24,7 @@ module Text.AsciiDoc.Inlines
   )
 where
 
-import Control.Monad
+import Control.Monad (join, when)
 import Control.Monad.Combinators hiding
   ( endBy1,
     sepBy1,
@@ -31,8 +32,8 @@ import Control.Monad.Combinators hiding
     some,
     someTill,
   )
-import Control.Monad.Combinators.NonEmpty
-import Data.Char hiding (Space)
+import Control.Monad.Combinators.NonEmpty (some)
+import Data.Char (isAlphaNum, isSpace)
 import Data.Generics (Data, Typeable)
 import qualified Data.List as L
 import Data.List.NonEmpty (NonEmpty (..), (<|))
@@ -121,11 +122,11 @@ scopeAlternatives =
     ("`", "``")
   ]
 
-openMarker :: Scope -> String
-openMarker (Scope open _close _ _) = open
+openingMark :: Scope -> String
+openingMark (Scope open _close _ _) = open
 
-closeMarker :: Scope -> String
-closeMarker (Scope _open close _ _) = close
+closingMark :: Scope -> String
+closingMark (Scope _open close _ _) = close
 
 data Inline
   = Space Text
@@ -306,8 +307,8 @@ pScope_ applicability ps = do
   o <- pOpen open
   i <- pInline
   (is, ending) <- do
-    -- GLOBAL PROPERTY: no inline can accept any closing marker if it's not in
-    -- its first position, and no inline accepting closing marker characters in
+    -- GLOBAL PROPERTY: no inline can accept any closing mark if it's not in
+    -- its first position, and no inline accepting closing mark characters in
     -- the first position can be processed before `pScope` in `pInline`.
     --
     -- This property is used here to guarantee that the ending token is always
@@ -356,7 +357,7 @@ pPush scopeCandidates = do
     pCheckCandidate :: State -> Scope -> Parser Scope
     pCheckCandidate state candidate@(Scope _ _ applicability content) = do
       -- Debug.traceShowM ("Debug. Push candidate: ", candidate)
-      _ <- Parsec.string (openMarker candidate)
+      _ <- Parsec.string (openingMark candidate)
       case (applicability, content) of
         (Constrained, _) -> pRulePush1
         (_, NoSpaces) -> pRulePush1
@@ -364,7 +365,7 @@ pPush scopeCandidates = do
       -- pRulePush2 state candidate
       -- Debug.traceShowM ("Debug. Accept push candidate: ", candidate)
       pure candidate
-    -- RULE PUSH 1: open marker not followed by space, when constrained or the
+    -- RULE PUSH 1: open mark not followed by space, when constrained or the
     -- scope cannot contain spaces. More specifically, find alphanumeric
     -- character before finding space.
     pRulePush1 :: Parser ()
@@ -433,7 +434,7 @@ pPop canAcceptConstrainedClose =
       [] -> empty
     -- RULE POP 1: not followed by alphanum. In this case we need to check only
     -- the following character: it must be different from alphanum, or '_'.
-    -- There is an exception with '_': when a closing marker starting with '_'
+    -- There is an exception with '_': when a closing mark starting with '_'
     -- is present in the tail of the stack. This is slightly different to both
     -- what the Asciidoctor documentation says and what Asciidoctor does.
     --
@@ -443,17 +444,17 @@ pPop canAcceptConstrainedClose =
     pRulePop1 state = do
       let exception = case scopes state of
             _ : tail_ ->
-              -- Slightly convoluted way to compare heads of close markers to
+              -- Slightly convoluted way to compare heads of closing marks to
               -- avoid calling @head@
               any (== '_') $
                 fmap fst $
                   catMaybes $
-                    fmap (L.uncons . closeMarker) tail_
+                    fmap (L.uncons . closingMark) tail_
             [] -> False
       () <$ Parsec.satisfy (\c -> not (isAlphaNum c || (c == '_' && not exception)))
         <|> Parsec.eof
-    -- RULE POP 2: match longest possible marker. Check that we are not popping
-    -- a scope with a closing marker that is a prefix of another marker deeper
+    -- RULE POP 2: match longest possible mark. Check that we are not popping
+    -- a scope with a closing mark that is a prefix of another mark deeper
     -- in the stack that can also be closed. E.g., if we find "**" in the input,
     -- and "*" is in the stack but "**"" also is, we must interrupt the "*"
     -- scope and close the "**" scope.
@@ -463,8 +464,8 @@ pPop canAcceptConstrainedClose =
             NE.nonEmpty $
               filter (/= "") $
                 catMaybes $
-                  fmap (closeMarker s `L.stripPrefix`) $
-                    fmap closeMarker ss
+                  fmap (closingMark s `L.stripPrefix`) $
+                    fmap closingMark ss
       case maybeSuffixes of
         Just suffixes -> do
           (optional $ choice $ fmap (\t -> Parsec.string t) suffixes) >>= \case
