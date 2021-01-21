@@ -10,8 +10,8 @@ import Data.List.NonEmpty (NonEmpty (..))
 import Data.Text (Text)
 import ReprTree (reprTreeString)
 import qualified Test.Hspec.Expectations.Pretty as Pretty
-import Test.Tasty
-import Test.Tasty.HUnit
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertFailure, testCase)
 import Text.AsciiDoc.Inlines
 import qualified Text.Parsec as Parsec
 

@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Inlines
@@ -60,10 +61,9 @@ import qualified Text.Parsec.Char as Parsec
 type Parser = Parsec.Parsec Text State
 
 data State = State
-  { -- | A stack (LIFO) of descriptors of potential delimited open inline spans:
-    -- e.g., quoted text blocks, sub- or super-scripts, quoted strings. Top of
-    -- the stack contains the most recently open span.
-    scopes :: [Scope],
+  { -- | A stack (LIFO) of descriptors of open formatting and punctuation marks.
+    -- Top of the stack contains the most recently open mark.
+    openMarks :: [Mark],
     acceptConstrained :: AcceptConstrained
   }
   deriving (Eq, Show)
@@ -74,16 +74,24 @@ data AcceptConstrained
   | OpenAndClose
   deriving (Eq, Show)
 
-data Scope
-  = Scope String String ScopeApplicability ScopeContent
+-- | A formatting/punctuation pair (of marks) descriptor.
+--
+-- See
+-- https://docs.asciidoctor.org/asciidoc/latest/text/#formatting-terms-and-concepts.
+data Mark = Mark
+  { openingMark :: String,
+    closingMark :: String,
+    markType :: MarkType,
+    spanContent :: SpanContent
+  }
   deriving (Eq, Ord, Show)
 
-data ScopeApplicability
+data MarkType
   = Constrained
   | Unconstrained
   deriving (Eq, Ord, Show)
 
-data ScopeContent
+data SpanContent
   = Any
   | NoSpaces
   deriving (Eq, Ord, Show)
@@ -91,27 +99,27 @@ data ScopeContent
 initialState :: State
 initialState =
   State
-    { scopes = [],
+    { openMarks = [],
       acceptConstrained = OpenOnly
     }
 
-defaultScopes :: [Scope]
-defaultScopes =
-  [ Scope "##" "##" Unconstrained Any,
-    Scope "#" "#" Constrained Any,
-    Scope "**" "**" Unconstrained Any,
-    Scope "*" "*" Constrained Any,
-    Scope "__" "__" Unconstrained Any,
-    Scope "_" "_" Constrained Any,
-    Scope "``" "``" Unconstrained Any,
-    Scope "`" "`" Constrained Any,
-    Scope "~" "~" Constrained Any,
-    Scope "^" "^" Constrained Any
+defaultMarks :: [Mark]
+defaultMarks =
+  [ Mark "##" "##" Unconstrained Any,
+    Mark "#" "#" Constrained Any,
+    Mark "**" "**" Unconstrained Any,
+    Mark "*" "*" Constrained Any,
+    Mark "__" "__" Unconstrained Any,
+    Mark "_" "_" Constrained Any,
+    Mark "``" "``" Unconstrained Any,
+    Mark "`" "`" Constrained Any,
+    Mark "~" "~" Constrained Any,
+    Mark "^" "^" Constrained Any
   ]
 
 -- | Association list.
-scopeAlternatives :: [(String, String)]
-scopeAlternatives =
+markAlternatives :: [(String, String)]
+markAlternatives =
   [ ("##", "#"),
     ("#", "##"),
     ("**", "*"),
@@ -121,12 +129,6 @@ scopeAlternatives =
     ("``", "`"),
     ("`", "``")
   ]
-
-openingMark :: Scope -> String
-openingMark (Scope open _close _ _) = open
-
-closingMark :: Scope -> String
-closingMark (Scope _open close _ _) = close
 
 data Inline
   = Space Text
@@ -143,7 +145,7 @@ instance Semigroup Inline where
   x <> InlineSeq y = InlineSeq (x <| y)
   x <> y = InlineSeq (x <| y :| [])
 
--- > appendl (1 :| [2,3]) [4,5] == 1 :| [2,3,4,5]
+-- >>> appendl (1 :| [2,3]) [4,5] == 1 :| [2,3,4,5]
 appendl :: NonEmpty a -> [a] -> NonEmpty a
 appendl (x :| xs) l = x :| (xs ++ l)
 
@@ -157,23 +159,23 @@ data Style
   deriving (Eq, Show, Typeable, Data)
 
 makeInline ::
-  Scope ->
+  Mark ->
   ParameterList Text ->
   Text ->
   NonEmpty Inline ->
   Text ->
   Inline
-makeInline scope ps open is close = case scope of
-  Scope "##" _ _ _ -> StyledText Custom ps open is close
-  Scope "#" _ _ _ -> StyledText Custom ps open is close
-  Scope "**" _ _ _ -> StyledText Bold ps open is close
-  Scope "*" _ _ _ -> StyledText Bold ps open is close
-  Scope "__" _ _ _ -> StyledText Italic ps open is close
-  Scope "_" _ _ _ -> StyledText Italic ps open is close
-  Scope "``" _ _ _ -> StyledText Monospace ps open is close
-  Scope "`" _ _ _ -> StyledText Monospace ps open is close
-  Scope "~" _ _ _ -> StyledText Subscript ps open is close
-  Scope "^" _ _ _ -> StyledText Superscript ps open is close
+makeInline mark ps open is close = case mark of
+  Mark "##" _ _ _ -> StyledText Custom ps open is close
+  Mark "#" _ _ _ -> StyledText Custom ps open is close
+  Mark "**" _ _ _ -> StyledText Bold ps open is close
+  Mark "*" _ _ _ -> StyledText Bold ps open is close
+  Mark "__" _ _ _ -> StyledText Italic ps open is close
+  Mark "_" _ _ _ -> StyledText Italic ps open is close
+  Mark "``" _ _ _ -> StyledText Monospace ps open is close
+  Mark "`" _ _ _ -> StyledText Monospace ps open is close
+  Mark "~" _ _ _ -> StyledText Subscript ps open is close
+  Mark "^" _ _ _ -> StyledText Superscript ps open is close
   _ -> InlineSeq is
 
 pPutAcceptConstrained :: AcceptConstrained -> Parser ()
@@ -206,7 +208,7 @@ pInline =
   (:| []) <$> pWord -- TODO: replace to pBeginWithAlphaNum
     <|> (:| []) <$> pSpace
     <|> (:| []) <$> pNewline
-    <|> pScopeWithOptionalParameters
+    <|> pSpanWithOptionalParameters
     <|> (:| []) <$> pFallback
 
 -- | Like @Text.Parsec.Char.spaces@, but with the following differences:
@@ -268,8 +270,8 @@ pParameterList =
   ParameterList . T.pack
     <$ Parsec.char '[' <*> manyTill Parsec.anyChar (Parsec.char ']')
 
-pScopeWithOptionalParameters :: Parser (NonEmpty Inline)
-pScopeWithOptionalParameters = Parsec.try $ do
+pSpanWithOptionalParameters :: Parser (NonEmpty Inline)
+pSpanWithOptionalParameters = Parsec.try $ do
   canOpenConstrained <- pCanAcceptConstrainedOpen
   maybeParameters <- optional pParameterList
   let parameterList = maybe defaultParameterList id maybeParameters
@@ -278,38 +280,38 @@ pScopeWithOptionalParameters = Parsec.try $ do
       -- Try unconstrained first. If it fails or it is interrupted, assume
       -- constrained will have an equal or better ending.
       (\is -> (is, Closed))
-        <$> Parsec.try (pFailIfInterrupted $ pScope_ Unconstrained parameterList)
-          <|> pScope_ Constrained parameterList
-    False -> pScope_ Unconstrained parameterList
+        <$> Parsec.try (pFailIfInterrupted $ pSpan_ Unconstrained parameterList)
+          <|> pSpan_ Constrained parameterList
+    False -> pSpan_ Unconstrained parameterList
   case (ending, maybeParameters) of
     (Closed, Just _) -> pure is
     (_, Nothing) -> pure is
     (Interrupted, Just _) -> empty
 
-pFailIfInterrupted :: Parser (a, ScopeEnding) -> Parser a
+pFailIfInterrupted :: Parser (a, SpanEnding) -> Parser a
 pFailIfInterrupted p = do
   (a, ending) <- p
   case ending of
     Closed -> pure a
     Interrupted -> empty
 
-data ScopeEnding
+data SpanEnding
   = Closed -- TODO: closing string should be included.
   | Interrupted
 
-pScope_ ::
-  ScopeApplicability ->
+pSpan_ ::
+  MarkType ->
   ParameterList Text ->
-  Parser (NonEmpty Inline, ScopeEnding)
-pScope_ applicability ps = do
-  when (applicability == Constrained) pCheckAcceptConstrainedOpen
-  scope@(Scope open close _applicability _content) <- pPush scopeCandidates
-  o <- pOpen open
+  Parser (NonEmpty Inline, SpanEnding)
+pSpan_ mt ps = do
+  when (mt == Constrained) pCheckAcceptConstrainedOpen
+  mark@Mark {openingMark, closingMark} <- pPush markCandidates
+  o <- pOpen openingMark
   i <- pInline
   (is, ending) <- do
     -- GLOBAL PROPERTY: no inline can accept any closing mark if it's not in
     -- its first position, and no inline accepting closing mark characters in
-    -- the first position can be processed before `pScope` in `pInline`.
+    -- the first position can be processed before `pSpan` in `pInline`.
     --
     -- This property is used here to guarantee that the ending token is always
     -- found by `manyTill_`.
@@ -318,9 +320,9 @@ pScope_ applicability ps = do
       pPop b
   case ending of
     Closed -> do
-      c <- pClose close
+      c <- pClose closingMark
       pure $
-        (makeInline scope ps (T.pack o) (join (i :| is)) (T.pack c) :| [], ending)
+        (makeInline mark ps (T.pack o) (join (i :| is)) (T.pack c) :| [], ending)
     Interrupted -> pure (Symbol (T.pack o) <| join (i :| is), ending)
   where
     pCheckAcceptConstrainedOpen =
@@ -329,36 +331,36 @@ pScope_ applicability ps = do
         False -> empty
     pOpen t = Parsec.string t <* pPutAcceptConstrained OpenAndClose
     pClose t = Parsec.string t <* pPutAcceptConstrained OpenAndClose
-    scopeCandidates =
-      filter (\(Scope _ _ applicability' _) -> applicability == applicability') $
-        defaultScopes
+    markCandidates =
+      filter (\mark -> markType mark == mt) $
+        defaultMarks
 
 -- pPushDebug arg = do
 --   pos <- Parsec.getPosition
 --   nextChar <- pAnd Parsec.anyChar <|> pure 'E'
 --   st <- Parsec.getState
---   Debug.traceShowM ("Debug. Push" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained st)), reverse (scopes st))
+--   Debug.traceShowM ("Debug. Push" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained st)), reverse (openMarks st))
 --   res <- pPush arg
 --   pure res
 
 -- | It does neither consume input nor modify state field @acceptConstrained@.
 --
--- Initial candidates: `scopeCandidates`.
-pPush :: [Scope] -> Parser Scope
-pPush scopeCandidates = do
+-- Initial candidates: `markCandidates`.
+pPush :: [Mark] -> Parser Mark
+pPush markCandidates = do
   state <- Parsec.getState
   -- All checks under pAnd to not consume input
-  found <- choice $ fmap (pAnd . pCheckCandidate state) $ scopeCandidates
+  found <- choice $ fmap (pAnd . pCheckCandidate state) $ markCandidates
   pRulePush2 state found
   -- Modify state, but not acceptConstrained, as we don't consume input.
-  Parsec.putState $ state {scopes = found : scopes state}
+  Parsec.putState $ state {openMarks = found : openMarks state}
   pure found
   where
-    pCheckCandidate :: State -> Scope -> Parser Scope
-    pCheckCandidate state candidate@(Scope _ _ applicability content) = do
+    pCheckCandidate :: State -> Mark -> Parser Mark
+    pCheckCandidate state candidate = do
       -- Debug.traceShowM ("Debug. Push candidate: ", candidate)
       _ <- Parsec.string (openingMark candidate)
-      case (applicability, content) of
+      case (markType candidate, spanContent candidate) of
         (Constrained, _) -> pRulePush1
         (_, NoSpaces) -> pRulePush1
         _ -> pure ()
@@ -366,25 +368,25 @@ pPush scopeCandidates = do
       -- Debug.traceShowM ("Debug. Accept push candidate: ", candidate)
       pure candidate
     -- RULE PUSH 1: open mark not followed by space, when constrained or the
-    -- scope cannot contain spaces. More specifically, find alphanumeric
+    -- mark cannot contain spaces. More specifically, find alphanumeric
     -- character before finding space.
     pRulePush1 :: Parser ()
     pRulePush1 = do
       _ <- many (Parsec.satisfy (\c -> not (isSpace c || isAlphaNum c)))
       _ <- Parsec.satisfy isAlphaNum
       pure ()
-    -- RULE PUSH 2: alternating nesting. Only admit a scope type already in the
-    -- stack if there is a more recent scope of the same type but with different
-    -- applicability. E.g.: we can alternate "*" and "**", but not push "*"
-    -- again if the most recent "*" is more recent thant the most recent "**";
-    -- if "*" does not appear in the stack, we can push.
-    pRulePush2 :: State -> Scope -> Parser ()
-    pRulePush2 state scope@(Scope open close applicability content) = do
-      let scopeAlt = do
-            openAlt <- lookup open scopeAlternatives
-            pure $ Scope openAlt close applicability content
-      let ss = scopes state
-      case (scope `L.elemIndex` ss, scopeAlt >>= (`L.elemIndex` ss)) of
+    -- RULE PUSH 2: alternating nesting. Only admit a mark type already in the
+    -- stack if there is a more recent mark of the same type but with different
+    -- mark type. E.g.: we can alternate "*" and "**", but not push "*" again if
+    -- the most recent "*" is more recent thant the most recent "**"; if "*"
+    -- does not appear in the stack, we can push.
+    pRulePush2 :: State -> Mark -> Parser ()
+    pRulePush2 state mark@Mark {openingMark, closingMark, markType, spanContent} = do
+      let spanAlt = do
+            openAlt <- lookup openingMark markAlternatives
+            pure $ Mark openAlt closingMark markType spanContent
+      let ss = openMarks state
+      case (mark `L.elemIndex` ss, spanAlt >>= (`L.elemIndex` ss)) of
         (Just i, Just j) | i > j -> pure ()
         (Nothing, _) -> pure ()
         _ -> empty
@@ -393,37 +395,37 @@ pPush scopeCandidates = do
 --   s <- Parsec.getState
 --   pos <- Parsec.getPosition
 --   nextChar <- pAnd Parsec.anyChar <|> pure 'E'
---   Debug.traceShowM ("Debug. Pop" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained s)), reverse (scopes s))
+--   Debug.traceShowM ("Debug. Pop" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained s)), reverse (openMarks s))
 --   res <- pPop arg
 --   pure res
 
 -- | It does neither consume input nor modify state field @acceptConstrained@.
 --
 -- TODO: Avoid boolean blindness in argument.
-pPop :: Bool -> Parser ScopeEnding
+pPop :: Bool -> Parser SpanEnding
 pPop canAcceptConstrainedClose =
   pAnd Parsec.eof *> pure Interrupted
     <|> pPop'
   where
-    pPop' :: Parser ScopeEnding
+    pPop' :: Parser SpanEnding
     pPop' = do
       state <- Parsec.getState
       -- All checks under pAnd to not consume input
       found <-
-        choice $ fmap (pAnd . pCheckCandidate state) $ L.tails $ scopes state
-      case scopes state of
+        choice $ fmap (pAnd . pCheckCandidate state) $ L.tails $ openMarks state
+      case openMarks state of
         [] -> empty -- Cannot happen because above `candidates` calculation would have failed.
         top : tail_ -> do
-          Parsec.putState $ state {scopes = tail_}
+          Parsec.putState $ state {openMarks = tail_}
           case top == found of
             True -> pure Closed
             False -> pure Interrupted
-    pCheckCandidate :: State -> [Scope] -> Parser Scope
+    pCheckCandidate :: State -> [Mark] -> Parser Mark
     pCheckCandidate state = \case
-      candidate@(Scope _open close applicability _content) : tail_ -> do
+      candidate : tail_ -> do
         -- Debug.traceShowM ("Debug. Pull candidate: ", candidate, canAcceptConstrainedClose)
-        _ <- Parsec.string close
-        case (applicability, canAcceptConstrainedClose) of
+        _ <- Parsec.string $ closingMark candidate
+        case (markType candidate, canAcceptConstrainedClose) of
           -- Nested pAnd necessary because following RULE POP 1 can consume input.
           (Unconstrained, _) -> pure ()
           (Constrained, True) -> pAnd $ pRulePop1 state
@@ -442,7 +444,7 @@ pPop canAcceptConstrainedClose =
     -- https://asciidoctor.org/docs/user-manual/#when-should-i-use-unconstrained-quotes.
     pRulePop1 :: State -> Parser ()
     pRulePop1 state = do
-      let exception = case scopes state of
+      let exception = case openMarks state of
             _ : tail_ ->
               -- Slightly convoluted way to compare heads of closing marks to
               -- avoid calling @head@
@@ -454,11 +456,11 @@ pPop canAcceptConstrainedClose =
       () <$ Parsec.satisfy (\c -> not (isAlphaNum c || (c == '_' && not exception)))
         <|> Parsec.eof
     -- RULE POP 2: match longest possible mark. Check that we are not popping
-    -- a scope with a closing mark that is a prefix of another mark deeper
+    -- a mark with a closing mark that is a prefix of another mark deeper
     -- in the stack that can also be closed. E.g., if we find "**" in the input,
     -- and "*" is in the stack but "**"" also is, we must interrupt the "*"
-    -- scope and close the "**" scope.
-    pRulePop2 :: Scope -> [Scope] -> Parser ()
+    -- mark and close the "**" mark.
+    pRulePop2 :: Mark -> [Mark] -> Parser ()
     pRulePop2 s ss = do
       let maybeSuffixes =
             NE.nonEmpty $
