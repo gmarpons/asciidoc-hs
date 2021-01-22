@@ -24,47 +24,47 @@ parseBlockPrefix t = case parseTest pBlockPrefix t of
 metadataUnitTests :: TestTree
 metadataUnitTests =
   testGroup
-    "Metadata unit tests"
-    [ testCase "Block title" $ do
+    "metadata unit tests"
+    [ testCase "block title" $ do
         p <- parseBlockPrefix [".Foo"]
         toMetadata p
           `shouldBe` mempty {metadataTitle = Just (Last (InlineSeq (Word "Foo" :| [])))},
-      testCase "Standalone block id" $ do
+      testCase "standalone block id" $ do
         p <- parseBlockPrefix ["[[Foo]]"]
         toMetadata p
           `shouldBe` mempty {metadataIds = ["Foo"]},
-      testCase "Two standalone block ids" $ do
+      testCase "two standalone block ids" $ do
         p <- parseBlockPrefix ["[[Foo]]", "[[Bar]]"]
         toMetadata p
           `shouldBe` mempty {metadataIds = ["Foo", "Bar"]},
-      testCase "Standalone block style" $ do
+      testCase "standalone block style" $ do
         p <- parseBlockPrefix ["[Foo]"]
         toMetadata p
           `shouldBe` mempty {metadataStyle = Just (Last "Foo")},
-      testCase "Standalone block role" $ do
+      testCase "standalone block role" $ do
         p <- parseBlockPrefix ["[.Foo]"]
         -- Compatible with how Asciidoctor cleans style when none is specified
         -- in shortand syntax.
         toMetadata p
           `shouldBe` mempty {metadataStyle = Just (Last ""), metadataRoles = ["Foo"]},
-      testCase "Positional attributes" $ do
+      testCase "positional attributes" $ do
         p <- parseBlockPrefix ["[Foo, Bar, Baz]"]
         toMetadata p
           `shouldBe` mempty
             { metadataStyle = Just (Last "Foo"),
               metadataPositionalAttributes = IntMap.fromList [(2, "Bar"), (3, "Baz")]
             },
-      testCase "Named attribute" $ do
+      testCase "named attribute" $ do
         p <- parseBlockPrefix ["[Foo = Bar]"]
         toMetadata p
           `shouldBe` mempty {metadataNamedAttributes = Map.fromList [("Foo", "Bar")]},
-      testCase "Standalone option" $ do
+      testCase "standalone option" $ do
         p <- parseBlockPrefix ["[%Foo]"]
         -- Compatible with how Asciidoctor cleans style when none is specified
         -- in shortand syntax.
         toMetadata p
           `shouldBe` mempty {metadataStyle = Just (Last ""), metadataOptions = ["Foo"]},
-      testCase "Complex example" $ do
+      testCase "complex example" $ do
         p <-
           parseBlockPrefix
             [ "[.Foo]",
