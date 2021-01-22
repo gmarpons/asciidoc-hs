@@ -268,18 +268,36 @@ data UnparsedLine
   | CommentLine Text
   deriving (Eq, Show)
 
--- | Custom parser state.
+-- | Description of a syntactic delimiter used to enclose a delimited block.
+-- A block delimiter consists of some special character repeated a number of
+-- times.
+-- Examples of delimiters are: "@****@" or "@====@".
+data Delimiter = Char :* Int
+  deriving (Eq, Show)
+
+-- | A syntactic marker signaling the start of a new item in a list.
+-- Examples of valid markers for unordered lists are: "@*@" or "@---@".
+type Marker = Text
+
+-- | Custom parser state for the parser for 'Block's.
 data State = State
-  { -- | A stack of open nestable blocks (first element is the top of the
-    -- stack). We store the syntactic delimiter used to open the block (symbol
-    -- character and number of repetitions of this character), because it is
-    -- what we need to recognize the matching closing delimiter.
+  { -- | A stack of open 'Nestable' blocks.
+    -- Innermost element is the top of the stack.
     --
-    -- The list is non-empty: at the bottom of the list there is always a value
-    -- representing the top-level document, so only one value in the stack
-    -- indicates no nestable block has been open.
-    openBlocks :: NonEmpty ((Int, Char), [Text]),
-    -- | An environment mapping attribute names to their values (inlines).
+    -- For every nestable block we store:
+    --
+    -- * The syntactic 'Delimiter' used to open the block.
+    --   This is what we need to recognize the matching closing delimiter.
+    -- * A stack (represented with a list) of list item markers previously used
+    --   in the current (possibly nested, aka multi-level, list).
+    --   If the parser position is not currently on a list, the stack is empty.
+    --
+    -- The list representing the stack of open nestable blocks is non-empty: at
+    -- the bottom of the stack there is always a value representing the
+    -- top-level document (defined in 'State's @Monoid@ instance), so a
+    -- one-element stack indicates no nestable block has been open.
+    openBlocks :: NonEmpty (Delimiter, [Marker]),
+    -- | An environment mapping attribute names to their values (i.e. inlines).
     env :: Map.Map AttributeId Inline
   }
   deriving (Eq, Show)
@@ -294,9 +312,9 @@ instance Semigroup State where
 instance Monoid State where
   mempty =
     State
-      { -- (0, '*') is an arbitrary value that is always present as the bottom
-        -- of the stack.
-        openBlocks = ((0, '*'), []) :| [],
+      { -- We use @'*' :* 0@ as an arbitrary value that is always present as the
+        -- bottom of the stack.
+        openBlocks = ('*' :* 0, []) :| [],
         env = mempty
       }
 
@@ -677,11 +695,11 @@ pOpenDelimiter cs = do
   -- If block is already open (the delimiter is in the stack of open blocks),
   -- we're not opening it again, but fail. In case we don't fail, we consume the
   -- line that was looked ahead above.
-  if (n, c) `elem` (fst <$> openBlocks st)
+  if (c :* n) `elem` (fst <$> openBlocks st)
     then empty
     else
       ( do
-          Parsec.putState (st {openBlocks = ((n, c), []) <| openBlocks st})
+          Parsec.putState (st {openBlocks = (c :* n, []) <| openBlocks st})
           -- Consume one token (aka one line of input), and following blanklines
           _ <- pLine LP.anyRemainder
           _ <- many pBlankLine
@@ -692,7 +710,7 @@ pOpenDelimiter cs = do
 pCloseDelimiter :: Monad m => Parser m ()
 pCloseDelimiter = do
   st <- Parsec.getState
-  let ((n, c), _) = NE.head (openBlocks st)
+  let (c :* n, _) = NE.head (openBlocks st)
   case NE.tail (openBlocks st) of
     -- In presence of DanglingBlockPrefix'es, we can try to pop from an
     -- openBlocks stack that contains the initial open block only. We do nothing
@@ -706,7 +724,7 @@ pCloseDelimiter = do
         pLine (LP.count n (char c))
           <|> Parsec.lookAhead
             ( choice $
-                fmap (\((n', c'), _) -> pLine' (LP.count n' (char c'))) (b : bs)
+                fmap (\(c' :* n', _) -> pLine' (LP.count n' (char c'))) (b : bs)
             )
       Parsec.putState $ st {openBlocks = b :| bs}
 
