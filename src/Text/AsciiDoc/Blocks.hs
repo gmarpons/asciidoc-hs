@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Blocks
@@ -90,6 +91,7 @@ import qualified Text.AsciiDoc.Attributes as Attributes
 import Text.AsciiDoc.Inlines hiding (Parser)
 import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
+import Text.AsciiDoc.SpecialChars
 import Text.Parsec ((<?>))
 import qualified Text.Parsec as Parsec
 import Text.Parsec.Char (alphaNum, char, space)
@@ -268,17 +270,6 @@ data UnparsedLine
   | CommentLine Text
   deriving (Eq, Show)
 
--- | Description of a syntactic delimiter used to enclose a delimited block.
--- A block delimiter consists of some special character repeated a number of
--- times.
--- Examples of delimiters are: "@****@" or "@====@".
-data Delimiter = Char :* Int
-  deriving (Eq, Show)
-
--- | A syntactic marker signaling the start of a new item in a list.
--- Examples of valid markers for unordered lists are: "@*@" or "@---@".
-type Marker = Text
-
 -- | Custom parser state for the parser for 'Block's.
 data State = State
   { -- | A stack of open 'Nestable' blocks.
@@ -296,7 +287,7 @@ data State = State
     -- the bottom of the stack there is always a value representing the
     -- top-level document (defined in 'State's @Monoid@ instance), so a
     -- one-element stack indicates no nestable block has been open.
-    openBlocks :: NonEmpty (Delimiter, [Marker]),
+    openBlocks :: NonEmpty (Marker DelimiterChar, [Marker ListChar]),
     -- | An environment mapping attribute names to their values (i.e. inlines).
     env :: Map.Map AttributeId Inline
   }
@@ -314,7 +305,7 @@ instance Monoid State where
     State
       { -- We use @'*' :* 0@ as an arbitrary value that is always present as the
         -- bottom of the stack.
-        openBlocks = ('*' :* 0, []) :| [],
+        openBlocks = (AsteriskD :* 0, []) :| [],
         env = mempty
       }
 
@@ -351,14 +342,13 @@ pBlockPrefix = some pBlockPrefixItem <?> "block prefix"
 
 pBlockComment :: Monad m => Parser m Comment
 pBlockComment = do
-  delimiter <- choice $ fmap pLine' $ LP.runOfN 4 ['/']
-  let n = T.length delimiter
+  _ :* n <- choice $ fmap pLine' $ LP.runOfN 4 [SlashC]
   -- We use here an alternative version of pLine, called pLine', that does not
   -- try to handle pre-processor directives, as includes have no effect inside
   -- block comments.
   ts <-
     manyTill (pLine' LP.anyRemainder) $
-      eitherP (pLine' (LP.count n (char '/'))) Parsec.eof
+      eitherP (pLine' (LP.count n SlashC)) Parsec.eof
   option () pInclude
   _ <- many pBlankLine
   pure $ BlockComment ts
@@ -380,8 +370,8 @@ pAttributeEntry = pAttributeEntry' <* many pBlankLine
     pAttributeEntry' = do
       (k, v) <-
         pLine
-          ( (,) <$ LP.string ":" <*> LP.some alphaNum
-              <* LP.string ":"
+          ( (,) <$ LP.char ':' <*> LP.some alphaNum
+              <* LP.char ':'
               <* LP.some space <*> LP.anyRemainder
           )
       -- TODO. Replace to a general parseInline with a SubstitutionGroup
@@ -407,7 +397,7 @@ pBlockTitle = pBlockTitle' <* many pBlankLine
   where
     pBlockTitle' =
       MetadataItem . BlockTitle . (:| []) . TextLine
-        <$> pLine (LP.string "." *> (LP.satisfy (not . isSpace) <> LP.anyRemainder))
+        <$> pLine (LP.char '.' *> (LP.satisfy (not . isSpace) <> LP.anyRemainder))
 
 -- | Parses a nestable delimited block.
 pNestable ::
@@ -415,23 +405,26 @@ pNestable ::
   [BlockPrefixItem UnparsedInline] ->
   Parser m (Block UnparsedInline)
 pNestable prefix = do
-  delimiter <- pOpenDelimiter ['=', '*']
+  c <- pOpenDelimiter [AsteriskD, EqualsSignD]
   bs <- manyTill (pBlock []) $ eitherP pCloseDelimiter Parsec.eof
   _ <- many pBlankLine
-  pure $ case delimiter of
-    '=' -> Nestable Example prefix bs
-    '*' -> Nestable Sidebar prefix bs
-    x -> error $ "pNestable: unexpected character '" <> show x <> "'"
+  pure $ case c of
+    AsteriskD -> Nestable Sidebar prefix bs
+    HyphenD -> error "pNestable: HyphenD case not implemented yet"
+    EqualsSignD -> Nestable Example prefix bs
 
 -- | Parses a section header and computes its level.
 --
--- __POST-CONDITION__: The computed level is greater or equal to 0. This follows
--- from the fact that 'LP.runOfN 1' can only return texts of length >= 1.
+-- __POST-CONDITION__: The computed level is greater or equal to 0.
 pSectionHeader ::
   Monad m =>
   [BlockPrefixItem UnparsedInline] ->
   Parser m (Block UnparsedInline)
 pSectionHeader prefix = do
+  -- Post-condition above follows from the fact that 'LP.runOfN 1' can only
+  -- return texts of length >= 1.
+    -- TODO. Use type-level Nat in 'Marker', so post-condition can be checked by
+  -- the compiler.
   state <- Parsec.getState
   case (NE.tail (openBlocks state), style) of
     -- If parser is currently inside a nestable block (tail state.openBlocks is
@@ -447,12 +440,10 @@ pSectionHeader prefix = do
       pure $ SectionHeaderBlock prefix header
   where
     pSectionHeader' =
-      ( \(marker, value) ->
-          SectionHeader (TextLine value :| []) (-1 + T.length marker)
-      )
+      (\(_c :* n, value) -> SectionHeader (TextLine value :| []) (n - 1))
         <$> pLine
           ( (,)
-              <$> choice (LP.runOfN 1 ['=']) <* some space
+              <$> choice (LP.runOfN 1 [EqualsSignH]) <* some space
                 <*> (LP.satisfy (not . isSpace) <> LP.anyRemainder)
           )
     style = metadataStyle $ toMetadata $ fmap (fmap parseInline'') prefix
@@ -464,7 +455,7 @@ pList ::
 pList prefix =
   pList' prefix <* many pBlankLine
   where
-    allUnorderedMarkers = LP.runOfN 1 ['-', '*']
+    allUnorderedMarkers = LP.runOfN 1 [AsteriskL, HyphenL]
     pList' prefix' = do
       state <- Parsec.getState
       let allowedMarkers = allUnorderedMarkers
@@ -473,7 +464,7 @@ pList prefix =
           disallowedMarkers = snd currentBlock
           (currentBlock, otherBlocks) = NE.head &&& NE.tail $ openBlocks state
       -- Accept item with a new marker
-      (marker, firstLine) <-
+      (marker@(c :* n), firstLine) <-
         pItemFirstLine allowedMarkers disallowedMarkers
       -- Add new marker to the state
       Parsec.setState $
@@ -482,13 +473,14 @@ pList prefix =
               (fst currentBlock, marker : disallowedMarkers) :| otherBlocks
           }
       -- Complete the first item, using the already parsed first line
-      firstItem <- pItem firstLine <?> "first item " <> T.unpack marker
+      firstItem <-
+        pItem firstLine
+          <?> "first item " <> T.unpack (fromMarker marker)
       -- Accept items with the same marker of the first item
-      let pMarker = LP.string (T.unpack marker)
       nextItems <-
         many
-          ( pItemFirstLine [pMarker] []
-              >>= pItem . snd <?> "item " <> T.unpack marker
+          ( pItemFirstLine [LP.count n c] []
+              >>= pItem . snd <?> "item " <> T.unpack (fromMarker marker)
           )
       -- Recover state present at the beginning of the function. Functions like
       -- pItem could have modified it.
@@ -496,7 +488,10 @@ pList prefix =
       pure $ List (Unordered Nothing) prefix' (firstItem :| nextItems)
     pItemFirstLine =
       \x -> pLine . itemFirstLine x
-    itemFirstLine :: [LP.LineParser Text] -> [Text] -> LP.LineParser (Text, Text)
+    itemFirstLine ::
+      [LP.LineParser (Marker ListChar)] ->
+      [Marker ListChar] ->
+      LP.LineParser (Marker ListChar, Text)
     itemFirstLine allowedMarkers disallowedMarkers = do
       _ <- many space
       marker <- choice allowedMarkers
@@ -556,7 +551,7 @@ pParagraph prefix extraFinalizers =
       TextLine
         <$> pLineNoneOf
           -- Nestable
-          ( LP.runOfN 4 ['=', '*']
+          ( (fmap fromMarker <$> LP.runOfN 4 [AsteriskD, EqualsSignD])
               <> [
                    -- Blank line
                    pure ""
@@ -570,8 +565,10 @@ pParagraphContinuation extraFinalizers =
     <|> TextLine
       <$> pLineNoneOf
         ( fmap Parsec.try extraFinalizers
-            -- Nestable | BlockComment
-            <> LP.runOfN 4 ['=', '*', '/']
+            -- Nestable
+            <> (fmap fromMarker <$> LP.runOfN 4 [AsteriskD, EqualsSignD])
+            -- BlockComment
+            <> (fmap fromMarker <$> LP.runOfN 4 [SlashC])
             <> [
                  -- BlockId, starts with "[["
                  Parsec.try LP.blockId,
@@ -683,14 +680,14 @@ pInclude = empty
 --   -- file is also an include.
 --   option () pInclude
 
-pOpenDelimiter :: Monad m => [Char] -> Parser m Char
+pOpenDelimiter ::
+  Monad m =>
+  [SpecialChar DelimiterChar] ->
+  Parser m (SpecialChar DelimiterChar)
 pOpenDelimiter cs = do
   -- Parsec.lookAhead needed here because in case we fail later on (because the
   -- block is already open) we don't want to consume any input.
-  t <- Parsec.lookAhead $ Parsec.try $ pLineOneOf (LP.runOfN 4 cs)
-  -- WARNING! Use of PARTIAL FUNCTION 'T.head': 't' is guaranteed not to be
-  -- empty because 'LP.runOfN 4' can only return texts with length >= 4.
-  let (n, c) = (T.length t, T.head t)
+  (c :* n) <- Parsec.lookAhead $ Parsec.try $ pLineOneOf (LP.runOfN 4 cs)
   st <- Parsec.getState
   -- If block is already open (the delimiter is in the stack of open blocks),
   -- we're not opening it again, but fail. In case we don't fail, we consume the
@@ -721,10 +718,10 @@ pCloseDelimiter = do
       -- from input (and look for includes) if the found delimiter matches
       -- openBlocks' top.
       _ <-
-        pLine (LP.count n (char c))
+        pLine (LP.count n c)
           <|> Parsec.lookAhead
             ( choice $
-                fmap (\(c' :* n', _) -> pLine' (LP.count n' (char c'))) (b : bs)
+                fmap (\(c' :* n', _) -> pLine' (LP.count n' c')) (b : bs)
             )
       Parsec.putState $ st {openBlocks = b :| bs}
 

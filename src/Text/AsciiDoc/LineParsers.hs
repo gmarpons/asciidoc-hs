@@ -13,18 +13,22 @@
 -- All parsers in this module return 'Data.Text.Text', which helps to combine
 -- them using the @Monoid@ instance of 'Text.Parsec.ParsecT'.
 module Text.AsciiDoc.LineParsers
-  ( -- = Line Parser type
+  ( -- * Line parser type
     LineParser,
-    -- = Concrete Parsers
+
+    -- * Concrete parsers
     blockId,
     blockAttributeList,
-    -- = Generic Parsers
+
+    -- * Generic parsers accepting 'Marker's
     runOfN,
+    count,
+
+    -- * Generic parsers accepting 'Text'
     anyRemainder,
     many,
     manyText,
     some,
-    count,
     string,
     char,
     satisfy,
@@ -45,6 +49,7 @@ import Data.Functor.Identity (Identity)
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text as T
+import Text.AsciiDoc.SpecialChars
 import qualified Text.Parsec as Parsec
 
 -- | Parser type used to check syntactic conditions on single lines of an
@@ -117,8 +122,13 @@ blockAttributeList = do
 --
 -- Example: @runOfN 4 ['+', '=']@ accepts runs of four or more symbols @"+"@, or
 -- four or more symbols @"="@.
-runOfN :: Int -> [Char] -> [LineParser Text]
-runOfN n = fmap $ \c -> count n (Parsec.char c) <> many (Parsec.char c)
+runOfN :: Int -> [SpecialChar a] -> [LineParser (Marker a)]
+runOfN n = fmap $ \c ->
+  (\t -> c :* (n + T.length t))
+    <$ PC.count n (Parsec.char $ fromSpecialChar c)
+      <*> many (Parsec.char $ fromSpecialChar c)
+
+-- count m p = T.pack <$> PC.count m p
 
 -- | Returns (parses successfully) the remaining text of the line, whatever its
 -- content.
@@ -126,17 +136,17 @@ anyRemainder :: LineParser Text
 -- anyRemainder = Parsec.getInput <* Parsec.setInput ""
 anyRemainder = many Parsec.anyChar
 
-many :: MonadPlus f => f Char -> f Text
+many :: MonadPlus m => m Char -> m Text
 many p = T.pack <$> PC.many p
 
-manyText :: MonadPlus f => f Text -> f Text
+manyText :: MonadPlus m => m Text -> m Text
 manyText p = T.concat <$> PC.many p
 
-some :: MonadPlus f => f Char -> f Text
+some :: MonadPlus m => m Char -> m Text
 some p = T.pack . NE.toList <$> PC.some p
 
-count :: Monad f => Int -> f Char -> f Text
-count m p = T.pack <$> PC.count m p
+count :: Int -> SpecialChar a -> LineParser (Marker a)
+count m c = c :* m <$ PC.count m (Parsec.char (fromSpecialChar c))
 
 string :: String -> LineParser Text
 string s = T.pack <$> Parsec.string s
