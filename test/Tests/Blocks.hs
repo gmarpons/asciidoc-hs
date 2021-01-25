@@ -28,13 +28,32 @@ blockUnitTests :: TestTree
 blockUnitTests =
   testGroup
     "block unit tests"
-    [ paragraphUnitTests,
+    [ blockCornerCaseUnitTests,
+      paragraphUnitTests,
       sectionHeaderUnitTests,
       danglingBlockPrefixUnitTests,
       nestableUnitTests,
       unorderedListUnitTests,
       nestedListsUnitTests,
-      listContinuationUnitTests
+      listContinuationUnitTests,
+      commentUnitTests
+    ]
+
+blockCornerCaseUnitTests :: TestTree
+blockCornerCaseUnitTests =
+  testGroup
+    "block corner case unit tests"
+    [ testCase "empty document" $ do
+        p <-
+          parseDocument
+            []
+        p `shouldBe` [],
+      testCase "single blank line" $ do
+        p <-
+          parseDocument
+            [ ""
+            ]
+        p `shouldBe` []
     ]
 
 paragraphUnitTests :: TestTree
@@ -476,7 +495,7 @@ nestableUnitTests =
                              ]
                          ]
                      ],
-      testCase "unfinished sidebar nested into example block" $ do
+      testCase "non-closed sidebar nested into example block" $ do
         p <-
           parseDocument
             [ "====",
@@ -497,7 +516,7 @@ nestableUnitTests =
                              ]
                          ]
                      ],
-      testCase "unfinished example block nested into example block" $ do
+      testCase "non-closed example block nested into example block" $ do
         p <-
           parseDocument
             [ "====",
@@ -1142,4 +1161,220 @@ listContinuationUnitTests =
                              :| []
                          )
                      ]
+    ]
+
+commentUnitTests :: TestTree
+commentUnitTests =
+  testGroup
+    "comment unit tests"
+    [ testCase "dangling block comment" $ do
+        p <-
+          parseDocument
+            [ "////",
+              "Foo",
+              "////"
+            ]
+        p
+          `shouldBe` [DanglingBlockPrefix [Comment (BlockComment ["Foo"])]],
+      testCase "dangling line comment sequence" $ do
+        p <-
+          parseDocument
+            [ "//Foo",
+              "// Bar"
+            ]
+        p
+          `shouldBe` [ DanglingBlockPrefix
+                         [Comment (LineCommentSequence ("Foo" :| [" Bar"]))]
+                     ],
+      testCase "block comment before paragraph" $ do
+        p <-
+          parseDocument
+            [ "////",
+              "Foo",
+              "////",
+              "Bar"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [Comment (BlockComment ["Foo"])]
+                         (TextLine "Bar" :| [])
+                     ],
+      testCase "block comment before paragraph, with redundant space" $ do
+        p <-
+          parseDocument
+            [ "//// ",
+              "Foo",
+              "//// ",
+              "Bar"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [Comment (BlockComment ["Foo"])]
+                         (TextLine "Bar" :| [])
+                     ],
+      testCase "block comment before paragraph, separated by blank line" $ do
+        p <-
+          parseDocument
+            [ "////",
+              "Foo",
+              "////",
+              "",
+              "Bar"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [Comment (BlockComment ["Foo"])]
+                         (TextLine "Bar" :| [])
+                     ],
+      testCase "empty block comment before paragraph" $ do
+        p <-
+          parseDocument
+            [ "////",
+              "////",
+              "Foo"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [Comment (BlockComment [])]
+                         (TextLine "Foo" :| [])
+                     ],
+      testCase "empty line comment before paragraph" $ do
+        p <-
+          parseDocument
+            [ "//",
+              "Foo"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [Comment (LineCommentSequence ("" :| []))]
+                         (TextLine "Foo" :| [])
+                     ],
+      testCase "block comment with multiple pseudo-paragraphs" $ do
+        p <-
+          parseDocument
+            [ "////",
+              "Foo",
+              "",
+              "Bar",
+              "////",
+              "Baz"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [Comment (BlockComment ["Foo", "", "Bar"])]
+                         (TextLine "Baz" :| [])
+                     ],
+      testCase "line comment sequence before section header" $ do
+        p <-
+          parseDocument
+            [ "//Foo",
+              "// Bar",
+              "== Baz"
+            ]
+        p
+          `shouldBe` [ SectionHeaderBlock
+                         [Comment (LineCommentSequence ("Foo" :| [" Bar"]))]
+                         (SectionHeader (TextLine "Baz" :| []) 1)
+                     ],
+      testCase "block comment followed by line comment sequence" $ do
+        p <-
+          parseDocument
+            [ "////",
+              "Foo",
+              "",
+              "////",
+              "//Bar",
+              "Baz"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [ Comment (BlockComment ["Foo", ""]),
+                           Comment (LineCommentSequence ("Bar" :| []))
+                         ]
+                         (TextLine "Baz" :| [])
+                     ],
+      testCase "line comment sequence followed by block comment" $ do
+        p <-
+          parseDocument
+            [ "// Foo",
+              "//Bar",
+              "////",
+              "Baz",
+              "////",
+              "Qux"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [ Comment (LineCommentSequence (" Foo" :| ["Bar"])),
+                           Comment (BlockComment ["Baz"])
+                         ]
+                         (TextLine "Qux" :| [])
+                     ],
+      testCase "block comment with more than four '/' (slash)" $ do
+        p <-
+          parseDocument
+            [ "/////",
+              "Foo",
+              "////",
+              "Bar",
+              "////",
+              "/////",
+              "Baz"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [ Comment (BlockComment ["Foo", "////", "Bar", "////"])
+                         ]
+                         (TextLine "Baz" :| [])
+                     ],
+      testCase "dangling non-closed block comment" $ do
+        p <-
+          parseDocument
+            [ "////",
+              "Foo",
+              "",
+              "Bar"
+            ]
+        p
+          `shouldBe` [ DanglingBlockPrefix
+                         [Comment (BlockComment ["Foo", "", "Bar"])]
+                     ],
+      testCase "bad block comment opening, with three '/' (slashes)" $ do
+        p <-
+          parseDocument
+            [ "///",
+              "Foo",
+              "////"
+            ]
+        p
+          `shouldBe` [ Paragraph [] (TextLine "///" :| [TextLine "Foo"]),
+                       DanglingBlockPrefix [Comment (BlockComment [])]
+                     ],
+      testCase "bad line comment, with three '/' (slashes)" $ do
+        p <-
+          parseDocument
+            [ "///Foo",
+              "Bar"
+            ]
+        p
+          `shouldBe` [Paragraph [] (TextLine "///Foo" :| [TextLine "Bar"])],
+      testCase "bad block comment opening, preceded by space" $ do
+        p <-
+          parseDocument
+            [ " ////",
+              "Foo",
+              "////"
+            ]
+        p
+          `shouldBe` [ Paragraph [] (TextLine " ////" :| [TextLine "Foo"]),
+                       DanglingBlockPrefix [Comment (BlockComment [])]
+                     ],
+      testCase "bad line comment opening, preceded by space" $ do
+        p <-
+          parseDocument
+            [ " //Foo",
+              "Bar"
+            ]
+        p
+          `shouldBe` [Paragraph [] (TextLine " //Foo" :| [TextLine "Bar"])]
     ]
