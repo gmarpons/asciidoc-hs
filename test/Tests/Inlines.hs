@@ -14,6 +14,8 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase)
 import Text.AsciiDoc.Inlines
 import qualified Text.Parsec as Parsec
+import Data.Functor.Identity (Identity)
+import Data.Map.Internal (Identity(runIdentity))
 
 parseInline :: Text -> IO Inline
 parseInline t =
@@ -21,9 +23,10 @@ parseInline t =
     Right result -> pure result
     Left parseError -> assertFailure $ "Parser fails: " <> show parseError
 
-parseTest :: Parser a -> Text -> Either Parsec.ParseError a
-parseTest parser text =
-  Parsec.runParser parser initialState "" text
+parseTest :: Parser Identity a -> Text -> Either Parsec.ParseError a
+parseTest parser t =
+  runIdentity $ Parsec.runParserT parser initialState  "" t
+
 
 shouldBe :: (Data a1, Data a2) => a1 -> a2 -> Pretty.Expectation
 shouldBe x y = reprTreeString x `Pretty.shouldBe` reprTreeString y
@@ -97,18 +100,22 @@ unconstrainedStylingTests :: TestTree
 unconstrainedStylingTests =
   testGroup
     "unconstrained formatting marks"
-    [ testCase "nesting unconstrained inside constrained, with no space" $ do
+    [ -- FAIL
+      testCase "nesting unconstrained inside constrained, with no space" $ do
         i <- parseInline "#a##b##c#"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "#" (Word "a" :| [StyledText Custom defaultParameterList "##" (Word "b" :| []) "##", Word "c"]) "#" :| []),
+      -- FAIL
       testCase "unpaired opening mark before correctly closed unconstrained span" $ do
         i <- parseInline "#a##b##"
         i `shouldBe` InlineSeq (Symbol "#" :| [Word "a", StyledText Custom defaultParameterList "##" (Word "b" :| []) "##"]),
+      --FAIL
       testCase "double nesting, with space (asciidoctor does not respect nesting rule)" $ do
         i <- parseInline "## #a ##b## c# ##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Space " " :| [StyledText Custom defaultParameterList "#" (Word "a" :| [Space " ", StyledText Custom defaultParameterList "##" (Word "b" :| []) "#", Space " ", Word "c"]) "#"]) "##" :| []),
       testCase "unpaired opening mark directly inside unconstrained pair (libasciidoc fails test)" $ do
         i <- parseInline "## #a b ##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Space " " :| [Symbol "#", Word "a", Space " ", Word "b", Space " "]) "##" :| []),
+      -- FAIL
       testCase "nesting constrained directly inside unconstrained, with no space" $ do
         i <- parseInline "###a###"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (StyledText Custom defaultParameterList "#" (Word "a" :| []) "#" :| []) "##" :| []),
@@ -175,7 +182,7 @@ nestedSpanTests =
       testCase "constrained italics interrupted inside custom" $ do
         i <- parseInline "#a _b#"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "#" (Word "a" :| [Space " ", Symbol "_", Word "b"]) "#" :| []),
-      testCase "constrained italics between two unconstrained custom (Asciidoctor does not respect nesting rule)" $ do
+      --FAIL
       testCase "constrained italics between two unconstrained custom (asciidoctor does not respect nesting rule)" $ do
         i <- parseInline "## _a ##b## c_ ##"
         i `shouldBe` InlineSeq (StyledText Custom defaultParameterList "##" (Space " " :| [StyledText Italic defaultParameterList "_" (Word "a" :| [Space " ", StyledText Custom defaultParameterList "##" (Word "b" :| []) "##", Space " ", Word "c"]) "_", Space " "]) "##" :| [])

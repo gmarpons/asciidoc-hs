@@ -88,7 +88,7 @@ import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Text.AsciiDoc.Attributes as Attributes
-import Text.AsciiDoc.Inlines hiding (Parser)
+import Text.AsciiDoc.Inlines hiding (Parser, State)
 import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
 import Text.AsciiDoc.SpecialChars

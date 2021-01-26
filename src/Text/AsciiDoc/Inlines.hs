@@ -20,8 +20,11 @@ module Text.AsciiDoc.Inlines
     Style (..),
     ParameterList (..),
     defaultParameterList,
-    initialState,
+
+    -- * Parser type
     Parser,
+    State (..),
+    initialState,
   )
 where
 
@@ -43,7 +46,7 @@ import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Text.Parsec as Parsec
-  ( Parsec,
+  ( ParsecT,
     char,
     eof,
     getState,
@@ -57,8 +60,9 @@ import qualified Text.Parsec.Char as Parsec
     satisfy,
     string,
   )
+import Text.Parsec ((<?>))
 
-type Parser = Parsec.Parsec Text State
+type Parser m = Parsec.ParsecT Text State m
 
 data State = State
   { -- | A stack (LIFO) of descriptors of open formatting and punctuation marks.
@@ -178,11 +182,11 @@ makeInline mark ps open is close = case mark of
   Mark "^" _ _ _ -> StyledText Superscript ps open is close
   _ -> InlineSeq is
 
-putAcceptConstrainedP :: AcceptConstrained -> Parser ()
+putAcceptConstrainedP :: Monad m => AcceptConstrained -> Parser m ()
 putAcceptConstrainedP a =
   Parsec.modifyState $ \s -> s {acceptConstrained = a}
 
-canAcceptConstrainedOpenP :: Parser Bool
+canAcceptConstrainedOpenP :: Monad m => Parser m Bool
 canAcceptConstrainedOpenP = do
   s <- Parsec.getState
   case acceptConstrained s of
@@ -190,7 +194,7 @@ canAcceptConstrainedOpenP = do
     OpenAndClose -> pure True
     CloseOnly -> pure False
 
-canAcceptConstrainedCloseP :: Parser Bool
+canAcceptConstrainedCloseP :: Monad m => Parser m Bool
 canAcceptConstrainedCloseP = do
   s <- Parsec.getState
   case acceptConstrained s of
@@ -199,17 +203,17 @@ canAcceptConstrainedCloseP = do
     CloseOnly -> pure True
 
 -- TODO: no spaces at the beginning.
-inlinesP :: Parser Inline
+inlinesP :: Monad m => Parser m Inline
 inlinesP =
   InlineSeq . join <$> some inlineP
 
-inlineP :: Parser (NonEmpty Inline)
+inlineP :: Monad m => Parser m (NonEmpty Inline)
 inlineP =
-  (:| []) <$> wordP -- TODO: replace to pBeginWithAlphaNum
-    <|> (:| []) <$> spaceP
-    <|> (:| []) <$> newlineP
-    <|> spanWithOptionalParametersP
-    <|> (:| []) <$> fallbackP
+  ((:| []) <$> wordP <?> "word") -- TODO: replace to pBeginWithAlphaNum
+    <|> ((:| []) <$> spaceP <?> "space")
+    <|> ((:| []) <$> newlineP <?> "newline")
+    <|> (spanWithOptionalParametersP <?> "span")
+    <|> ((:| []) <$> fallbackP <?> "fallback")
 
 -- | Like @Text.Parsec.Char.spaces@, but with the following differences:
 --
@@ -220,12 +224,12 @@ inlineP =
 -- It's also different from rules found in
 -- https://github.com/Mogztter/asciidoctor-inline-parser/blob/master/lib/asciidoctor/inline_parser/asciidoctor_grammar.treetop
 -- in that we include in @pSpaces@ any space character that is not a newline.
-spaceP :: Parser Inline
+spaceP :: Monad m => Parser m Inline
 spaceP =
   Space . T.pack . NE.toList
     <$> some spaceCharP <* putAcceptConstrainedP OpenOnly
 
-spaceCharP :: Parser Char
+spaceCharP :: Monad m => Parser m Char
 spaceCharP = Parsec.satisfy isAsciiDocSpace
 
 isAsciiDocSpace :: Char -> Bool
@@ -240,18 +244,18 @@ isAsciiDocSpace c = isSpace c && c /= '\n'
 -- This is the exact set parsed by @libasciidoc@. At the moment we do not
 -- consider the combination @LF CR@ (used in some systems, see
 -- https://en.wikipedia.org/wiki/Newline#Representation) as a single newline.
-newlineP :: Parser Inline
+newlineP :: Monad m => Parser m Inline
 newlineP =
   Newline <$> newlineP' <* putAcceptConstrainedP OpenOnly
   where
-    newlineP' :: Parser Text
+    newlineP' :: Monad m => Parser m Text
     newlineP' =
       (<>) <$> singletonP '\r' <*> option "" (singletonP '\n')
         <|> singletonP '\n'
-    singletonP :: Char -> Parser Text
+    singletonP :: Monad m => Char -> Parser m Text
     singletonP c = T.singleton <$> Parsec.char c
 
-wordP :: Parser Inline
+wordP :: Monad m => Parser m Inline
 wordP =
   Word . T.pack . NE.toList
     <$> some wordCharP <* putAcceptConstrainedP CloseOnly
@@ -265,12 +269,12 @@ newtype ParameterList a = ParameterList a
 defaultParameterList :: ParameterList Text
 defaultParameterList = ParameterList ""
 
-parameterListP :: Parser (ParameterList Text)
+parameterListP :: Monad m => Parser m (ParameterList Text)
 parameterListP =
   ParameterList . T.pack
     <$ Parsec.char '[' <*> manyTill Parsec.anyChar (Parsec.char ']')
 
-spanWithOptionalParametersP :: Parser (NonEmpty Inline)
+spanWithOptionalParametersP :: Monad m => Parser m (NonEmpty Inline)
 spanWithOptionalParametersP = Parsec.try $ do
   canOpenConstrained <- canAcceptConstrainedOpenP
   maybeParameters <- optional parameterListP
@@ -288,7 +292,7 @@ spanWithOptionalParametersP = Parsec.try $ do
     (_, Nothing) -> pure is
     (Interrupted, Just _) -> empty
 
-failIfInterruptedP :: Parser (a, SpanEnding) -> Parser a
+failIfInterruptedP :: Parser m (a, SpanEnding) -> Parser m a
 failIfInterruptedP p = do
   (a, ending) <- p
   case ending of
@@ -299,10 +303,10 @@ data SpanEnding
   = Closed -- TODO: closing string should be included.
   | Interrupted
 
-spanP_ ::
+spanP_ :: Monad m => 
   MarkType ->
   ParameterList Text ->
-  Parser (NonEmpty Inline, SpanEnding)
+  Parser m (NonEmpty Inline, SpanEnding)
 spanP_ mt ps = do
   when (mt == Constrained) checkAcceptConstrainedOpenP
   mark@Mark {openingMark, closingMark} <- pushP markCandidates
@@ -335,18 +339,10 @@ spanP_ mt ps = do
       filter (\mark -> markType mark == mt) $
         defaultMarks
 
--- pPushDebug arg = do
---   pos <- Parsec.getPosition
---   nextChar <- andP Parsec.anyChar <|> pure 'E'
---   st <- Parsec.getState
---   Debug.traceShowM ("Debug. Push" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained st)), reverse (openMarks st))
---   res <- pushP arg
---   pure res
-
 -- | It does neither consume input nor modify state field @acceptConstrained@.
 --
 -- Initial candidates: `markCandidates`.
-pushP :: [Mark] -> Parser Mark
+pushP :: Monad m => [Mark] -> Parser m Mark
 pushP markCandidates = do
   state <- Parsec.getState
   -- All checks under andP to not consume input
@@ -356,21 +352,19 @@ pushP markCandidates = do
   Parsec.putState $ state {openMarks = found : openMarks state}
   pure found
   where
-    pCheckCandidate :: State -> Mark -> Parser Mark
+    pCheckCandidate :: Monad m => State -> Mark -> Parser m Mark
     pCheckCandidate state candidate = do
-      -- Debug.traceShowM ("Debug. Push candidate: ", candidate)
       _ <- Parsec.string (openingMark candidate)
       case (markType candidate, spanContent candidate) of
         (Constrained, _) -> pRulePush1
         (_, NoSpaces) -> pRulePush1
         _ -> pure ()
       -- pRulePush2 state candidate
-      -- Debug.traceShowM ("Debug. Accept push candidate: ", candidate)
       pure candidate
     -- RULE PUSH 1: open mark not followed by space, when constrained or the
     -- mark cannot contain spaces. More specifically, find alphanumeric
     -- character before finding space.
-    pRulePush1 :: Parser ()
+    pRulePush1 :: Monad m => Parser m ()
     pRulePush1 = do
       _ <- many (Parsec.satisfy (\c -> not (isSpace c || isAlphaNum c)))
       _ <- Parsec.satisfy isAlphaNum
@@ -380,7 +374,7 @@ pushP markCandidates = do
     -- mark type. E.g.: we can alternate "*" and "**", but not push "*" again if
     -- the most recent "*" is more recent thant the most recent "**"; if "*"
     -- does not appear in the stack, we can push.
-    pRulePush2 :: State -> Mark -> Parser ()
+    pRulePush2 :: State -> Mark -> Parser m ()
     pRulePush2 state mark@Mark {openingMark, closingMark, markType, spanContent} = do
       let spanAlt = do
             openAlt <- lookup openingMark markAlternatives
@@ -391,23 +385,15 @@ pushP markCandidates = do
         (Nothing, _) -> pure ()
         _ -> empty
 
--- pPopDebug arg = do
---   s <- Parsec.getState
---   pos <- Parsec.getPosition
---   nextChar <- andP Parsec.anyChar <|> pure 'E'
---   Debug.traceShowM ("Debug. Pop" :: String, Parsec.sourceColumn pos, nextChar, take 8 (show (acceptConstrained s)), reverse (openMarks s))
---   res <- popP arg
---   pure res
-
 -- | It does neither consume input nor modify state field @acceptConstrained@.
 --
 -- TODO: Avoid boolean blindness in argument.
-popP :: Bool -> Parser SpanEnding
+popP :: Monad m => Bool -> Parser m SpanEnding
 popP canAcceptConstrainedClose =
   andP Parsec.eof *> pure Interrupted
     <|> popP'
   where
-    popP' :: Parser SpanEnding
+    popP' :: Monad m => Parser m SpanEnding
     popP' = do
       state <- Parsec.getState
       -- All checks under andP to not consume input
@@ -420,10 +406,9 @@ popP canAcceptConstrainedClose =
           case top == found of
             True -> pure Closed
             False -> pure Interrupted
-    pCheckCandidate :: State -> [Mark] -> Parser Mark
+    pCheckCandidate :: Monad m => State -> [Mark] -> Parser m Mark
     pCheckCandidate state = \case
       candidate : tail_ -> do
-        -- Debug.traceShowM ("Debug. Pull candidate: ", candidate, canAcceptConstrainedClose)
         _ <- Parsec.string $ closingMark candidate
         case (markType candidate, canAcceptConstrainedClose) of
           -- Nested andP necessary because following RULE POP 1 can consume input.
@@ -431,7 +416,6 @@ popP canAcceptConstrainedClose =
           (Constrained, True) -> andP $ pRulePop1 state
           (Constrained, False) -> empty
         pRulePop2 candidate tail_
-        -- Debug.traceShowM ("Debug. Accept pull candidate: ", candidate)
         pure candidate
       [] -> empty
     -- RULE POP 1: not followed by alphanum. In this case we need to check only
@@ -442,7 +426,7 @@ popP canAcceptConstrainedClose =
     --
     -- Reference:
     -- https://asciidoctor.org/docs/user-manual/#when-should-i-use-unconstrained-quotes.
-    pRulePop1 :: State -> Parser ()
+    pRulePop1 :: Monad m => State -> Parser m ()
     pRulePop1 state = do
       let exception = case openMarks state of
             _ : tail_ ->
@@ -460,7 +444,7 @@ popP canAcceptConstrainedClose =
     -- in the stack that can also be closed. E.g., if we find "**" in the input,
     -- and "*" is in the stack but "**"" also is, we must interrupt the "*"
     -- mark and close the "**" mark.
-    pRulePop2 :: Mark -> [Mark] -> Parser ()
+    pRulePop2 :: Monad m => Mark -> [Mark] -> Parser m ()
     pRulePop2 s ss = do
       let maybeSuffixes =
             NE.nonEmpty $
@@ -476,11 +460,11 @@ popP canAcceptConstrainedClose =
               pure ()
         Nothing -> pure ()
 
-fallbackP :: Parser Inline
+fallbackP :: Monad m => Parser m Inline
 fallbackP =
   Symbol . T.singleton <$> Parsec.anyChar <* putAcceptConstrainedP OpenAndClose
 
 -- | Models PEG's @&@ operator using Parsec's 'Parsec.lookAhead' and
 -- 'Parsec.try'.
-andP :: Parser a -> Parser a
+andP :: Monad m => Parser m a -> Parser m a
 andP p = Parsec.lookAhead (Parsec.try p)

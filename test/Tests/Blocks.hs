@@ -15,14 +15,14 @@ import Text.AsciiDoc.Blocks
 import Text.AsciiDoc.Metadata
 import qualified Text.Parsec as Parsec
 
-parseTest :: Parser Identity a -> [Text] -> Either Parsec.ParseError a
-parseTest parser tokens =
-  runIdentity $ Parsec.runParserT parser mempty "" tokens
-
 parseDocument :: [Text] -> IO [Block UnparsedInline]
 parseDocument t = case parseTest pDocument t of
   Right prefix -> pure prefix
   Left parseError -> assertFailure $ "Parser fails: " <> show parseError
+
+parseTest :: Parser Identity a -> [Text] -> Either Parsec.ParseError a
+parseTest parser tokens =
+  runIdentity $ Parsec.runParserT parser mempty "" tokens
 
 blockUnitTests :: TestTree
 blockUnitTests =
@@ -1263,6 +1263,48 @@ commentUnitTests =
           `shouldBe` [ Paragraph
                          [Comment (BlockComment ["Foo", "", "Bar"])]
                          (TextLine "Baz" :| [])
+                     ],
+      testCase "line comment sequence before paragraph" $ do
+        p <-
+          parseDocument
+            [ "//Foo",
+              "// Bar",
+              "Baz"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         [Comment (LineCommentSequence ("Foo" :| [" Bar"]))]
+                         (TextLine "Baz" :| [])
+                     ],
+      testCase "line comment inside paragraph" $ do
+        p <-
+          parseDocument
+            [ "Foo",
+              "// Bar",
+              "Baz"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         []
+                         (TextLine "Foo" :| [CommentLine " Bar", TextLine "Baz"])
+                     ],
+      testCase "line comment inside paragraph and after paragraph" $ do
+        p <-
+          parseDocument
+            [ "Foo",
+              "// Bar",
+              "Baz",
+              "//Qux"
+            ]
+        p
+          `shouldBe` [ Paragraph
+                         []
+                         ( TextLine "Foo"
+                             :| [ CommentLine " Bar",
+                                  TextLine "Baz",
+                                  CommentLine "Qux"
+                                ]
+                         )
                      ],
       testCase "line comment sequence before section header" $ do
         p <-
