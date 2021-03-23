@@ -132,4 +132,4 @@ instance
 
 -- | Stub until proper inline parsing is implemented.
 parseInline' :: Text -> Inline
-parseInline' = Word
+parseInline' = AlphaNum

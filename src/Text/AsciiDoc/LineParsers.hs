@@ -128,8 +128,6 @@ runOfN n = fmap $ \c ->
     <$ PC.count n (Parsec.char $ fromSpecialChar c)
       <*> many (Parsec.char $ fromSpecialChar c)
 
--- count m p = T.pack <$> PC.count m p
-
 -- | Returns (parses successfully) the remaining text of the line, whatever its
 -- content.
 anyRemainder :: LineParser Text

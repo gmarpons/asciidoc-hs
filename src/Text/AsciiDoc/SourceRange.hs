@@ -37,7 +37,7 @@ childInlines = Optics.traversalVL subInlines'
 contentLength :: Inline -> Int
 contentLength = \case
   Space t -> T.length t
-  Word t -> T.length t
+  AlphaNum t -> T.length t
   Symbol t -> T.length t
   Newline t -> T.length t
   _ -> 0
@@ -72,7 +72,7 @@ addSourceRanges = fst . addSourceRanges' (1, 1)
     wrap :: SourceRange -> Inline -> Inline
     wrap range = \case
       x@(Newline _) -> x
-      x@(Word _) ->
+      x@(AlphaNum _) ->
         StyledText
           Custom
           (ParameterList (T.pack $ "data-sourcepos: " <> show range))

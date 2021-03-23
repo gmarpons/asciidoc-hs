@@ -8,9 +8,9 @@ import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.Map as Map
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
-import Test.Hspec.Expectations.Pretty
-import Test.Tasty
-import Test.Tasty.HUnit
+import Test.Hspec.Expectations.Pretty (shouldBe)
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (assertFailure, testCase)
 import Tests.Blocks (parseTest)
 import Text.AsciiDoc.Blocks
 import Text.AsciiDoc.Inlines (Inline (..))
@@ -28,7 +28,7 @@ metadataUnitTests =
     [ testCase "block title" $ do
         p <- parseBlockPrefix [".Foo"]
         toMetadata p
-          `shouldBe` mempty {metadataTitle = Just (Last (InlineSeq (Word "Foo" :| [])))},
+          `shouldBe` mempty {metadataTitle = Just (Last (InlineSeq (AlphaNum "Foo" :| [])))},
       testCase "standalone block id" $ do
         p <- parseBlockPrefix ["[[Foo]]"]
         toMetadata p
@@ -82,7 +82,7 @@ metadataUnitTests =
               metadataIds = ["Foo", "Bar"],
               metadataRoles = ["Baz", "Foo"],
               metadataOptions = ["Foo", "", "Bar", "Baz"],
-              metadataTitle = Just (Last (Word "Baz")),
+              metadataTitle = Just (Last (AlphaNum "Baz")),
               metadataPositionalAttributes = IntMap.fromList [(2, "Foo"), (4, "Bar")],
               metadataNamedAttributes = Map.fromList [("Foo", "Baz")],
               metadataRoleNamedAttribute = Just (Last ["Baz", "Foo"])

@@ -32,7 +32,7 @@ convertDocument is =
 convertInline :: Inline -> Pandoc.Inlines
 convertInline = \case
   Space _ -> Pandoc.space
-  Word t -> Pandoc.str t
+  AlphaNum t -> Pandoc.str t
   Symbol t -> Pandoc.str t
   Newline _ -> Pandoc.softbreak
   StyledText Bold (ParameterList parameters) _ inlines _

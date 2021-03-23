@@ -696,11 +696,12 @@ pOpenDelimiter cs = do
     then empty
     else
       ( do
+          -- Add found delimiter to the stack of open blocks
           Parsec.putState (st {openBlocks = (c :* n, []) <| openBlocks st})
-          -- Consume one token (aka one line of input), and following blanklines
+          -- Complete consumption of the token (aka one line of input), and
+          -- following blanklines
           _ <- pLine LP.anyRemainder
           _ <- many pBlankLine
-          -- satisfyToken (const $ Just ())
           pure c
       )
 
@@ -714,7 +715,7 @@ pCloseDelimiter = do
     -- in this case.
     [] -> pure ()
     b : bs -> do
-      -- If (n, c) found in openBlocks stack, pop one element. Only consume line
+      -- If c :* n found in openBlocks stack, pop one element. Only consume line
       -- from input (and look for includes) if the found delimiter matches
       -- openBlocks' top.
       _ <-
@@ -739,9 +740,9 @@ satisfyToken matcher = Parsec.tokenPrim show updatePos matcher
 -- | TODO. Stub until proper inline parsing is implemented.
 parseInline'' :: UnparsedInline -> Inline
 parseInline'' (TextLine first :| following) =
-  InlineSeq $ Word first :| mapMaybe parse following
+  InlineSeq $ AlphaNum first :| mapMaybe parse following
   where
-    parse (TextLine t) = Just $ Word t
+    parse (TextLine t) = Just $ AlphaNum t
     parse (CommentLine _) = Nothing
 -- See INVARIANT.
 parseInline'' _ = error "parseInline'': First element should be a TextLine"

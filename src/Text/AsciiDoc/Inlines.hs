@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Inlines
@@ -12,10 +13,20 @@
 --
 -- This module contains Parsec-style parsers for AsciiDoc inline elements.
 --
--- It tries to be compatible with Asciidoctor.
+-- It tries to be compatible with Asciidoctor, but uses a grammar-based parsing
+-- approach instead of regexes.
+--
+-- There are three kinds of terminals in the grammar:
+--
+-- * Alpha-numeric sequences ('AlphaNum').
+-- * Gaps: space-like character sequences and 'Newline's (including the
+--   surrounding space).
+-- * Other characters: punctuation symbols, mathematical symbols, etc.
+--   It includes formatting and punctuation marks.
+--
+-- These groups of characters govern how constrained enclosures are parsed.
 module Text.AsciiDoc.Inlines
   ( Inline (..),
-    inlineP,
     inlinesP,
     Style (..),
     ParameterList (..),
@@ -28,7 +39,7 @@ module Text.AsciiDoc.Inlines
   )
 where
 
-import Control.Monad (join, when)
+import Control.Monad (when)
 import Control.Monad.Combinators hiding
   ( endBy1,
     sepBy1,
@@ -39,19 +50,20 @@ import Control.Monad.Combinators hiding
 import Control.Monad.Combinators.NonEmpty (some)
 import Data.Char (isAlphaNum, isSpace)
 import Data.Generics (Data, Typeable)
-import qualified Data.List as L
-import Data.List.NonEmpty (NonEmpty (..), (<|))
+import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
-import Data.Maybe (catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Text.AsciiDoc.SpecialChars
+import Text.Parsec ((<?>))
 import qualified Text.Parsec as Parsec
   ( ParsecT,
     char,
     eof,
     getState,
+    label,
     lookAhead,
-    modifyState,
+    notFollowedBy,
     putState,
     try,
   )
@@ -60,99 +72,28 @@ import qualified Text.Parsec.Char as Parsec
     satisfy,
     string,
   )
-import Text.Parsec ((<?>))
 
 type Parser m = Parsec.ParsecT Text State m
 
-data State = State
-  { -- | A stack (LIFO) of descriptors of open formatting and punctuation marks.
-    -- Top of the stack contains the most recently open mark.
-    openMarks :: [Mark],
-    acceptConstrained :: AcceptConstrained
+-- | Custom parser state for the parser for 'Inline's.
+newtype State = State
+  { -- | A stack (LIFO) of formatting and punctuation 'Mark's.
+    --
+    -- Every mark in the stack is the opening mark for the corresponding
+    -- enclosure.
+    -- Top of the stack contains the opening mark for most recently open
+    -- enclosure.
+    openEnclosures :: [Mark]
   }
   deriving (Eq, Show)
-
-data AcceptConstrained
-  = OpenOnly
-  | CloseOnly
-  | OpenAndClose
-  deriving (Eq, Show)
-
--- | A formatting/punctuation pair (of marks) descriptor.
---
--- See
--- https://docs.asciidoctor.org/asciidoc/latest/text/#formatting-terms-and-concepts.
-data Mark = Mark
-  { openingMark :: String,
-    closingMark :: String,
-    markType :: MarkType,
-    spanContent :: SpanContent
-  }
-  deriving (Eq, Ord, Show)
-
-data MarkType
-  = Constrained
-  | Unconstrained
-  deriving (Eq, Ord, Show)
-
-data SpanContent
-  = Any
-  | NoSpaces
-  deriving (Eq, Ord, Show)
 
 initialState :: State
 initialState =
   State
-    { openMarks = [],
-      acceptConstrained = OpenOnly
+    { openEnclosures = []
     }
 
-defaultMarks :: [Mark]
-defaultMarks =
-  [ Mark "##" "##" Unconstrained Any,
-    Mark "#" "#" Constrained Any,
-    Mark "**" "**" Unconstrained Any,
-    Mark "*" "*" Constrained Any,
-    Mark "__" "__" Unconstrained Any,
-    Mark "_" "_" Constrained Any,
-    Mark "``" "``" Unconstrained Any,
-    Mark "`" "`" Constrained Any,
-    Mark "~" "~" Constrained Any,
-    Mark "^" "^" Constrained Any
-  ]
-
--- | Association list.
-markAlternatives :: [(String, String)]
-markAlternatives =
-  [ ("##", "#"),
-    ("#", "##"),
-    ("**", "*"),
-    ("*", "**"),
-    ("__", "_"),
-    ("_", "__"),
-    ("``", "`"),
-    ("`", "``")
-  ]
-
-data Inline
-  = Space Text
-  | Word Text
-  | Symbol Text
-  | Newline Text
-  | StyledText Style (ParameterList Text) Text (NonEmpty Inline) Text
-  | InlineSeq (NonEmpty Inline)
-  deriving (Eq, Show, Typeable, Data)
-
-instance Semigroup Inline where
-  InlineSeq x <> InlineSeq y = InlineSeq (x <> y)
-  InlineSeq x <> y = InlineSeq (appendl x [y])
-  x <> InlineSeq y = InlineSeq (x <| y)
-  x <> y = InlineSeq (x <| y :| [])
-
--- >>> appendl (1 :| [2,3]) [4,5] == 1 :| [2,3,4,5]
-appendl :: NonEmpty a -> [a] -> NonEmpty a
-appendl (x :| xs) l = x :| (xs ++ l)
-
+-- | Formatting styles for inline text.
 data Style
   = Bold
   | Custom
@@ -162,72 +103,312 @@ data Style
   | Superscript
   deriving (Eq, Show, Typeable, Data)
 
-makeInline ::
-  Mark ->
-  ParameterList Text ->
-  Text ->
-  NonEmpty Inline ->
-  Text ->
-  Inline
-makeInline mark ps open is close = case mark of
-  Mark "##" _ _ _ -> StyledText Custom ps open is close
-  Mark "#" _ _ _ -> StyledText Custom ps open is close
-  Mark "**" _ _ _ -> StyledText Bold ps open is close
-  Mark "*" _ _ _ -> StyledText Bold ps open is close
-  Mark "__" _ _ _ -> StyledText Italic ps open is close
-  Mark "_" _ _ _ -> StyledText Italic ps open is close
-  Mark "``" _ _ _ -> StyledText Monospace ps open is close
-  Mark "`" _ _ _ -> StyledText Monospace ps open is close
-  Mark "~" _ _ _ -> StyledText Subscript ps open is close
-  Mark "^" _ _ _ -> StyledText Superscript ps open is close
-  _ -> InlineSeq is
+-- | Every formatting 'Mark' maps to a 'Style', and this function computes this
+-- map.
+toStyle :: Mark -> Style
+toStyle = \case
+  SingleMark NumberF -> Custom
+  SingleMark AsteriskF -> Bold
+  SingleMark UnderscoreF -> Italic
+  SingleMark GraveF -> Monospace
+  DoubleMark NumberF -> Custom
+  DoubleMark AsteriskF -> Bold
+  DoubleMark UnderscoreF -> Italic
+  DoubleMark GraveF -> Monospace
 
-putAcceptConstrainedP :: Monad m => AcceptConstrained -> Parser m ()
-putAcceptConstrainedP a =
-  Parsec.modifyState $ \s -> s {acceptConstrained = a}
+-- | A data type for all the different inline types.
+--
+-- Some inline types can contain other inlines, and there is a constructor
+-- 'InlineSeq' serving as a general inline container.
+data Inline
+  = Newline Text
+  | Space Text
+  | InlineMacro Text
+  | AlphaNum Text
+  | StyledText Style (ParameterList Text) Text (NonEmpty Inline) Text
+  | Symbol Text
+  | EscapedSymbol Text
+  | DoubleEscapedSymbol Text
+  | Word Text
+  | InlineSeq (NonEmpty Inline)
+  deriving (Eq, Show, Typeable, Data)
 
-canAcceptConstrainedOpenP :: Monad m => Parser m Bool
-canAcceptConstrainedOpenP = do
-  s <- Parsec.getState
-  case acceptConstrained s of
-    OpenOnly -> pure True
-    OpenAndClose -> pure True
-    CloseOnly -> pure False
+-- EBNF grammar non-terminal symbols  ------------------------------------------
 
-canAcceptConstrainedCloseP :: Monad m => Parser m Bool
-canAcceptConstrainedCloseP = do
-  s <- Parsec.getState
-  case acceptConstrained s of
-    OpenOnly -> pure False
-    OpenAndClose -> pure True
-    CloseOnly -> pure True
+-- The parser can be read as an EBNF grammar, with starting symbol 'inlinesP'.
+-- The resulting grammar would be ambiguous, so there are a series of functions
+-- used to discard some parsing paths ('muP', 'piP', 'sigmaP', 'phiP', 'psiP',
+-- 'omegaP'), that work together with order in alternatives to give a completely
+-- deterministic parser.
 
--- TODO: no spaces at the beginning.
+-- | This function is the only exported parser function for AsciiDoc inlines.
+--
+-- If more than one individual inlines can be parsed, it returns all of them
+-- encapsulated into an 'InlineSeq'.
 inlinesP :: Monad m => Parser m Inline
 inlinesP =
-  InlineSeq . join <$> some inlineP
+  (\(x :| xs) ys -> InlineSeq (x :| xs ++ ys))
+    <$> (firstP <?> "F")
+      <*> ( concat
+              <$> many
+                ( NE.toList <$> Parsec.label gapWithOptionalContinuationP "N1"
+                    <|> Parsec.label (sigmaP *> nonGapSequenceP) "N2"
+                )
+          )
+      <* Parsec.eof
 
-inlineP :: Monad m => Parser m (NonEmpty Inline)
-inlineP =
-  ((:| []) <$> wordP <?> "word") -- TODO: replace to pBeginWithAlphaNum
-    <|> ((:| []) <$> spaceP <?> "space")
-    <|> ((:| []) <$> newlineP <?> "newline")
-    <|> (spanWithOptionalParametersP <?> "span")
-    <|> ((:| []) <$> fallbackP <?> "fallback")
+unconstrainedP :: Monad m => Parser m Inline
+unconstrainedP = Parsec.try $ do
+  Parsec.label (pure ()) "U"
+  ps <- option defaultParameterList parameterListP
+  phiP
+  openMark <- openP ["##", "**", "__", "``"]
+  is <- inlinesInUnconstrainedP
+  closeMark <- closeP openMark
+  pure $ StyledText (toStyle openMark) ps (fromMarkT openMark) is (fromMarkT closeMark)
+  where
+    fromMarkT = T.pack . fromMark
+    inlinesInUnconstrainedP =
+      (\(x :| xs) ys -> x :| xs ++ ys)
+        <$> ((gapWithOptionalContinuationP <|> firstP) <?> "Y_p | F")
+        <*> ( concat
+                <$> many
+                  ( NE.toList <$> Parsec.label gapWithOptionalContinuationP "N1"
+                      <|> Parsec.label (sigmaP *> nonGapSequenceP) "N2"
+                  )
+            )
+{-# ANN unconstrainedP ("HLint: ignore" :: String) #-}
 
--- | Like @Text.Parsec.Char.spaces@, but with the following differences:
+constrainedP :: Monad m => Parser m Inline
+constrainedP = Parsec.try $ do
+  Parsec.label (pure ()) "C"
+  ps <- option defaultParameterList parameterListP
+  psiP
+  openMark <- openP ["#", "*", "_", "`"]
+  is <- inlinesInConstrainedP
+  omegaP
+  closeMark <- closeP openMark
+  pure $ StyledText (toStyle openMark) ps (fromMarkT openMark) is (fromMarkT closeMark)
+  where
+    fromMarkT = T.pack . fromMark
+    inlinesInConstrainedP =
+      (\(x :| xs) ys -> x :| xs ++ ys)
+        <$> (firstP <?> "F")
+        <*> ( concat
+                <$> many
+                  ( Parsec.label gapWithContinuationP "N1"
+                      <|> Parsec.label (muP *> nonGapSequenceP) "N2"
+                  )
+            )
+{-# ANN constrainedP ("HLint: ignore" :: String) #-}
+
+firstP :: Monad m => Parser m (NonEmpty Inline)
+firstP =
+  -- Notice the similarity with alphaNumOrOtherP.
+  (:| [])
+    <$> alphaNumP
+    <|> piP *> otherWithContinuationP
+
+nonGapSequenceP :: Monad m => Parser m [Inline]
+nonGapSequenceP =
+  (:)
+    <$> (unconstrainedP <|> otherP)
+    <*> option [] alphaNumOrOtherP
+
+openP :: Monad m => [Mark] -> Parser m Mark
+openP ms = do
+  Parsec.label (pure ()) "M_o"
+  mark <- choice $ Parsec.try . markP <$> ms
+  -- What follows is not part of the EBNF description of the language, but it's
+  -- easier to put it here than create a specific function for it.
+  st <- Parsec.getState
+  Parsec.putState $ st {openEnclosures = mark : openEnclosures st}
+  Parsec.label (pure ()) $ "State: " ++ show (mark : openEnclosures st)
+  pure mark
+
+closeP :: Monad m => Mark -> Parser m Mark
+closeP openMark = do
+  -- Passing a mark to this function is redundant, but the openP/closeP
+  -- connection makes the interface more clear for callers. It can also be used
+  -- to (run-time) check for some programming errors.
+  Parsec.label (pure ()) $ "M_c: " ++ show openMark
+  let closeMark = closingMarkOf openMark
+  _ <- markP closeMark
+  -- What follows is not part of the EBNF description of the language, but it's
+  -- easier to put it here than create a specific function for it.
+  st <- Parsec.getState
+  case openEnclosures st of
+    (e : es) -> do
+      when (closingMarkOf e /= closeMark) $
+        error "closeP: trying to close mark different from the innermost enclosure"
+      Parsec.putState $ st {openEnclosures = es}
+    [] -> error "closeP: trying to close non-existent enclosure"
+  pure closeMark
+
+gapWithContinuationP :: Monad m => Parser m [Inline]
+gapWithContinuationP =
+  flip Parsec.label "Y" $
+    -- Parsec.try is necessary because we can accept gapP and fail afterwards.
+    Parsec.try $
+      (++)
+        <$> (NE.toList <$> gapP)
+        <*> ((: []) <$> alphaNumP <|> NE.toList <$ sigmaP <*> otherWithContinuationP)
+
+gapWithOptionalContinuationP :: Monad m => Parser m (NonEmpty Inline)
+gapWithOptionalContinuationP =
+  flip Parsec.label "Y_p" $
+    (\(h :| t) c -> h :| t ++ c)
+      <$> gapP
+      <*> option [] ((: []) <$> alphaNumP <|> NE.toList <$ sigmaP <*> otherWithContinuationP)
+
+otherWithContinuationP :: Monad m => Parser m (NonEmpty Inline)
+otherWithContinuationP =
+  flip Parsec.label "X" $
+    ((:|) <$> unconstrainedP <*> option [] alphaNumOrOtherP)
+      <|> ((:|) <$> constrainedP <*> option [] gapOrOtherWithContinuationP)
+      <|> ((:|) <$> otherP <*> option [] alphaNumOrOtherP)
+  where
+    gapOrOtherWithContinuationP =
+      flip Parsec.label "Y | X" $
+        gapWithContinuationP
+          <|> muP *> (NE.toList <$> otherWithContinuationP)
+
+alphaNumOrOtherP :: Monad m => Parser m [Inline]
+alphaNumOrOtherP =
+  flip Parsec.label "A | X" $
+    (: [])
+      <$> alphaNumP
+      <|> muP *> (NE.toList <$> otherWithContinuationP)
+
+gapP :: Monad m => Parser m (NonEmpty Inline)
+gapP = flip Parsec.label "G" $ some newlineOrSpaceP
+  where
+    newlineOrSpaceP =
+      spaceP
+        <|> newlineP
+
+-- Functions for disambiguating the EBNF grammar  ------------------------------
+
+-- | Function called after a character of kind alphanum or other, and before a
+-- character of kind other.
 --
---     * It returns the parsed characters (enclosed in an Inline).
+-- TODO. Check that this function together with 'sigmaP' cover all cases at the
+-- beginning of N
 --
---     * Newlines are not considered space.
+-- It fails if an open enclosure can be closed (using 'closableMarks'), or a
+-- full unconstrained enclosure can be parsed, at current input.
+muP :: Monad m => Parser m ()
+muP = do
+  Parsec.label (pure ()) "MU"
+  st <- Parsec.getState
+  Parsec.notFollowedBy (choice $ tryToCloseMarkP <$> closableMarks (openEnclosures st))
+    <|> Parsec.lookAhead (() <$ unconstrainedP)
+
+-- | Function called after the opening mark of an enclosure (i.e., after a
+-- character of kind other), and before a character of kind other.
 --
--- It's also different from rules found in
--- https://github.com/Mogztter/asciidoctor-inline-parser/blob/master/lib/asciidoctor/inline_parser/asciidoctor_grammar.treetop
--- in that we include in @pSpaces@ any space character that is not a newline.
+-- It's identical to 'muP' with the exception that the mark recently open (top
+-- of the stack) is not taken into account.
+--
+-- It fails if an open enclosure (except the innermost one) can be closed (using
+-- 'closableMarks'), or a full unconstrained enclosure can be parsed, at current
+-- input.
+piP :: Monad m => Parser m ()
+piP = do
+  Parsec.label (pure ()) "PI"
+  st <- Parsec.getState
+  case openEnclosures st of
+    (_ : es) ->
+      Parsec.notFollowedBy (choice $ tryToCloseMarkP <$> closableMarks es)
+        <|> Parsec.lookAhead (() <$ unconstrainedP)
+    [] -> pure ()
+
+-- | Function called after a character of kind gap, and before a character of
+-- kind other.
+--
+-- It fails if any unconstrained open enclosure can be closed.
+sigmaP :: Monad m => Parser m ()
+sigmaP = do
+  Parsec.label (pure ()) "SIGMA"
+  st <- Parsec.getState
+  Parsec.notFollowedBy $
+    choice $ tryToCloseMarkP <$> filter isUnconstrained (openEnclosures st)
+
+-- | Function called before the opening mark for an unconstrained enclosure
+-- (i.e., before a character of kind other)
+--
+-- It fails if the mark we're trying to open (the one found as the next token of
+-- the input) is identical to the last open (the one for the innermost
+-- enclosure).
+--
+-- It takes into account the case that we can open both the innermost open mark
+-- and an extension of it (e.g., "@**@" is an extension of "@*@").
+-- This function doesn't fail in this case, and the parser will try to open the
+-- extended mark.
+phiP :: Monad m => Parser m ()
+phiP = do
+  Parsec.label (pure ()) "PHI"
+  st <- Parsec.getState
+  case openEnclosures st of
+    (e : _es) ->
+      Parsec.notFollowedBy (markP e)
+        <|> () <$ Parsec.lookAhead (choice $ markP <$> extendedMarksOf e)
+    [] -> pure ()
+
+-- | Function called before the opening mark for a constrained enclosure (i.e.,
+-- before a character of kind other).
+--
+-- It fails if the mark we're trying to open (the one found as the next token of
+-- the input) is identical to the last open (the one for the innermost
+-- enclosure).
+psiP :: Monad m => Parser m ()
+psiP = do
+  Parsec.label (pure ()) "PSI"
+  st <- Parsec.getState
+  case openEnclosures st of
+    (e : _es) -> Parsec.notFollowedBy (markP e)
+    [] -> pure ()
+
+-- | Function called after a character of kind alphanum or other, and before the
+-- closing mark for a constrained enclosure (i.e., before a character of kind
+-- other).
+--
+-- It fails if we can close an open extended version (i.e., an unconstrained
+-- enclosure) of the mark we're trying to close, as closing the unconstrained
+-- enclosure takes priority.
+omegaP :: Monad m => Parser m ()
+omegaP = do
+  Parsec.label (pure ()) "OMEGA"
+  st <- Parsec.getState
+  Parsec.notFollowedBy $
+    choice $ tryToCloseMarkP <$> filter isUnconstrained (openEnclosures st)
+
+closableMarks :: [Mark] -> [Mark]
+closableMarks ms = x ++ filter isUnconstrained y
+  where
+    (x, y) = span isConstrained ms
+
+tryToCloseMarkP :: Monad m => Mark -> Parser m ()
+tryToCloseMarkP m = Parsec.try $ do
+  Parsec.label (pure ()) $ "tryToCloseMarkP: " ++ show m
+  _ <- markP $ closingMarkOf m
+  when (isConstrained m) $ do
+    Parsec.eof <|> () <$ Parsec.satisfy (not . isAlphaNum)
+
+-- EBNF grammar terminal symbols  ----------------------------------------------
+
+markP :: Monad m => Mark -> Parser m Mark
+markP m = m <$ Parsec.string (fromMark m)
+
+otherP :: Monad m => Parser m Inline
+otherP =
+  Symbol . T.singleton
+    <$> Parsec.satisfy (\c -> not (isSpace c || isAlphaNum c))
+
 spaceP :: Monad m => Parser m Inline
 spaceP =
   Space . T.pack . NE.toList
-    <$> some spaceCharP <* putAcceptConstrainedP OpenOnly
+    <$> some spaceCharP
 
 spaceCharP :: Monad m => Parser m Char
 spaceCharP = Parsec.satisfy isAsciiDocSpace
@@ -246,7 +427,7 @@ isAsciiDocSpace c = isSpace c && c /= '\n'
 -- https://en.wikipedia.org/wiki/Newline#Representation) as a single newline.
 newlineP :: Monad m => Parser m Inline
 newlineP =
-  Newline <$> newlineP' <* putAcceptConstrainedP OpenOnly
+  Newline <$> newlineP'
   where
     newlineP' :: Monad m => Parser m Text
     newlineP' =
@@ -255,13 +436,15 @@ newlineP =
     singletonP :: Monad m => Char -> Parser m Text
     singletonP c = T.singleton <$> Parsec.char c
 
-wordP :: Monad m => Parser m Inline
-wordP =
-  Word . T.pack . NE.toList
-    <$> some wordCharP <* putAcceptConstrainedP CloseOnly
+alphaNumP :: Monad m => Parser m Inline
+alphaNumP =
+  AlphaNum . T.pack . NE.toList
+    <$> Parsec.label (some wordCharP) "A"
   where
     wordCharP = Parsec.satisfy $ \c ->
       isAlphaNum c
+
+-- Parser for (inline) parameter (aka attribute) lists  ------------------------
 
 newtype ParameterList a = ParameterList a
   deriving (Eq, Show, Data, Typeable)
@@ -271,200 +454,6 @@ defaultParameterList = ParameterList ""
 
 parameterListP :: Monad m => Parser m (ParameterList Text)
 parameterListP =
-  ParameterList . T.pack
-    <$ Parsec.char '[' <*> manyTill Parsec.anyChar (Parsec.char ']')
-
-spanWithOptionalParametersP :: Monad m => Parser m (NonEmpty Inline)
-spanWithOptionalParametersP = Parsec.try $ do
-  canOpenConstrained <- canAcceptConstrainedOpenP
-  maybeParameters <- optional parameterListP
-  let parameterList = maybe defaultParameterList id maybeParameters
-  (is, ending) <- case canOpenConstrained of
-    True ->
-      -- Try unconstrained first. If it fails or it is interrupted, assume
-      -- constrained will have an equal or better ending.
-      (\is -> (is, Closed))
-        <$> Parsec.try (failIfInterruptedP $ spanP_ Unconstrained parameterList)
-          <|> spanP_ Constrained parameterList
-    False -> spanP_ Unconstrained parameterList
-  case (ending, maybeParameters) of
-    (Closed, Just _) -> pure is
-    (_, Nothing) -> pure is
-    (Interrupted, Just _) -> empty
-
-failIfInterruptedP :: Parser m (a, SpanEnding) -> Parser m a
-failIfInterruptedP p = do
-  (a, ending) <- p
-  case ending of
-    Closed -> pure a
-    Interrupted -> empty
-
-data SpanEnding
-  = Closed -- TODO: closing string should be included.
-  | Interrupted
-
-spanP_ :: Monad m => 
-  MarkType ->
-  ParameterList Text ->
-  Parser m (NonEmpty Inline, SpanEnding)
-spanP_ mt ps = do
-  when (mt == Constrained) checkAcceptConstrainedOpenP
-  mark@Mark {openingMark, closingMark} <- pushP markCandidates
-  o <- openP openingMark
-  i <- inlineP
-  (is, ending) <- do
-    -- GLOBAL PROPERTY: no inline can accept any closing mark if it's not in
-    -- its first position, and no inline accepting closing mark characters in
-    -- the first position can be processed before `pSpan` in `inlineP`.
-    --
-    -- This property is used here to guarantee that the ending token is always
-    -- found by `manyTill_`.
-    manyTill_ inlineP $ do
-      b <- canAcceptConstrainedCloseP
-      popP b
-  case ending of
-    Closed -> do
-      c <- closeP closingMark
-      pure $
-        (makeInline mark ps (T.pack o) (join (i :| is)) (T.pack c) :| [], ending)
-    Interrupted -> pure (Symbol (T.pack o) <| join (i :| is), ending)
-  where
-    checkAcceptConstrainedOpenP =
-      canAcceptConstrainedOpenP >>= \case
-        True -> pure ()
-        False -> empty
-    openP t = Parsec.string t <* putAcceptConstrainedP OpenAndClose
-    closeP t = Parsec.string t <* putAcceptConstrainedP OpenAndClose
-    markCandidates =
-      filter (\mark -> markType mark == mt) $
-        defaultMarks
-
--- | It does neither consume input nor modify state field @acceptConstrained@.
---
--- Initial candidates: `markCandidates`.
-pushP :: Monad m => [Mark] -> Parser m Mark
-pushP markCandidates = do
-  state <- Parsec.getState
-  -- All checks under andP to not consume input
-  found <- choice $ fmap (andP . pCheckCandidate state) $ markCandidates
-  pRulePush2 state found
-  -- Modify state, but not acceptConstrained, as we don't consume input.
-  Parsec.putState $ state {openMarks = found : openMarks state}
-  pure found
-  where
-    pCheckCandidate :: Monad m => State -> Mark -> Parser m Mark
-    pCheckCandidate state candidate = do
-      _ <- Parsec.string (openingMark candidate)
-      case (markType candidate, spanContent candidate) of
-        (Constrained, _) -> pRulePush1
-        (_, NoSpaces) -> pRulePush1
-        _ -> pure ()
-      -- pRulePush2 state candidate
-      pure candidate
-    -- RULE PUSH 1: open mark not followed by space, when constrained or the
-    -- mark cannot contain spaces. More specifically, find alphanumeric
-    -- character before finding space.
-    pRulePush1 :: Monad m => Parser m ()
-    pRulePush1 = do
-      _ <- many (Parsec.satisfy (\c -> not (isSpace c || isAlphaNum c)))
-      _ <- Parsec.satisfy isAlphaNum
-      pure ()
-    -- RULE PUSH 2: alternating nesting. Only admit a mark type already in the
-    -- stack if there is a more recent mark of the same type but with different
-    -- mark type. E.g.: we can alternate "*" and "**", but not push "*" again if
-    -- the most recent "*" is more recent thant the most recent "**"; if "*"
-    -- does not appear in the stack, we can push.
-    pRulePush2 :: State -> Mark -> Parser m ()
-    pRulePush2 state mark@Mark {openingMark, closingMark, markType, spanContent} = do
-      let spanAlt = do
-            openAlt <- lookup openingMark markAlternatives
-            pure $ Mark openAlt closingMark markType spanContent
-      let ss = openMarks state
-      case (mark `L.elemIndex` ss, spanAlt >>= (`L.elemIndex` ss)) of
-        (Just i, Just j) | i > j -> pure ()
-        (Nothing, _) -> pure ()
-        _ -> empty
-
--- | It does neither consume input nor modify state field @acceptConstrained@.
---
--- TODO: Avoid boolean blindness in argument.
-popP :: Monad m => Bool -> Parser m SpanEnding
-popP canAcceptConstrainedClose =
-  andP Parsec.eof *> pure Interrupted
-    <|> popP'
-  where
-    popP' :: Monad m => Parser m SpanEnding
-    popP' = do
-      state <- Parsec.getState
-      -- All checks under andP to not consume input
-      found <-
-        choice $ fmap (andP . pCheckCandidate state) $ L.tails $ openMarks state
-      case openMarks state of
-        [] -> empty -- Cannot happen because above `candidates` calculation would have failed.
-        top : tail_ -> do
-          Parsec.putState $ state {openMarks = tail_}
-          case top == found of
-            True -> pure Closed
-            False -> pure Interrupted
-    pCheckCandidate :: Monad m => State -> [Mark] -> Parser m Mark
-    pCheckCandidate state = \case
-      candidate : tail_ -> do
-        _ <- Parsec.string $ closingMark candidate
-        case (markType candidate, canAcceptConstrainedClose) of
-          -- Nested andP necessary because following RULE POP 1 can consume input.
-          (Unconstrained, _) -> pure ()
-          (Constrained, True) -> andP $ pRulePop1 state
-          (Constrained, False) -> empty
-        pRulePop2 candidate tail_
-        pure candidate
-      [] -> empty
-    -- RULE POP 1: not followed by alphanum. In this case we need to check only
-    -- the following character: it must be different from alphanum, or '_'.
-    -- There is an exception with '_': when a closing mark starting with '_'
-    -- is present in the tail of the stack. This is slightly different to both
-    -- what the Asciidoctor documentation says and what Asciidoctor does.
-    --
-    -- Reference:
-    -- https://asciidoctor.org/docs/user-manual/#when-should-i-use-unconstrained-quotes.
-    pRulePop1 :: Monad m => State -> Parser m ()
-    pRulePop1 state = do
-      let exception = case openMarks state of
-            _ : tail_ ->
-              -- Slightly convoluted way to compare heads of closing marks to
-              -- avoid calling @head@
-              any (== '_') $
-                fmap fst $
-                  catMaybes $
-                    fmap (L.uncons . closingMark) tail_
-            [] -> False
-      () <$ Parsec.satisfy (\c -> not (isAlphaNum c || (c == '_' && not exception)))
-        <|> Parsec.eof
-    -- RULE POP 2: match longest possible mark. Check that we are not popping
-    -- a mark with a closing mark that is a prefix of another mark deeper
-    -- in the stack that can also be closed. E.g., if we find "**" in the input,
-    -- and "*" is in the stack but "**"" also is, we must interrupt the "*"
-    -- mark and close the "**" mark.
-    pRulePop2 :: Monad m => Mark -> [Mark] -> Parser m ()
-    pRulePop2 s ss = do
-      let maybeSuffixes =
-            NE.nonEmpty $
-              filter (/= "") $
-                catMaybes $
-                  fmap (closingMark s `L.stripPrefix`) $
-                    fmap closingMark ss
-      case maybeSuffixes of
-        Just suffixes -> do
-          (optional $ choice $ fmap (\t -> Parsec.string t) suffixes) >>= \case
-            Just _ -> empty
-            Nothing -> do
-              pure ()
-        Nothing -> pure ()
-
-fallbackP :: Monad m => Parser m Inline
-fallbackP =
-  Symbol . T.singleton <$> Parsec.anyChar <* putAcceptConstrainedP OpenAndClose
-
--- | Models PEG's @&@ operator using Parsec's 'Parsec.lookAhead' and
--- 'Parsec.try'.
-andP :: Monad m => Parser m a -> Parser m a
-andP p = Parsec.lookAhead (Parsec.try p)
+  flip Parsec.label "P" $
+    ParameterList . T.pack
+      <$ Parsec.char '[' <*> manyTill Parsec.anyChar (Parsec.char ']')
