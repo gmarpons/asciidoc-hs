@@ -31,7 +31,7 @@ data OutputType = Result | Log
 
 -- | Usage example:
 --
--- > cabal repl asciidoc-hs:library:debug-with-parsec-free <<< 'parseInline inlineP Log "*foo*"'
+-- > cabal repl asciidoc-hs:library:debug-with-parsec-free <<< 'parseInline inlinesP Log "*foo*"'
 parseInline ::
   Show a =>
   ParsecT Text I.State (ReaderT LogType IO) a ->
