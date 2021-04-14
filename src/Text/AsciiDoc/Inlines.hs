@@ -183,7 +183,7 @@ constrainedP :: Monad m => Parser m Inline
 constrainedP = Parsec.try $ do
   Parsec.label (pure ()) "C"
   ps <- option defaultParameterList parameterListP
-  psiP
+  varphiP
   openMark <- openP ["#", "*", "_", "`"]
   is <- inlinesInConstrainedP
   omegaP
@@ -217,7 +217,7 @@ nonGapSequenceP =
 
 openP :: Monad m => [Mark] -> Parser m Mark
 openP ms = do
-  Parsec.label (pure ()) "M_o"
+  Parsec.label (pure ()) "M_>"
   mark <- choice $ Parsec.try . markP <$> ms
   -- What follows is not part of the EBNF description of the language, but it's
   -- easier to put it here than create a specific function for it.
@@ -231,7 +231,7 @@ closeP openMark = do
   -- Passing a mark to this function is redundant, but the openP/closeP
   -- connection makes the interface more clear for callers. It can also be used
   -- to (run-time) check for some programming errors.
-  Parsec.label (pure ()) $ "M_c: " ++ show openMark
+  Parsec.label (pure ()) $ "M_<: " ++ show openMark
   let closeMark = closingMarkOf openMark
   _ <- markP closeMark
   -- What follows is not part of the EBNF description of the language, but it's
@@ -337,37 +337,27 @@ sigmaP = do
 -- | Function called before the opening mark for an unconstrained enclosure
 -- (i.e., before a character of kind other)
 --
--- It fails if the mark we're trying to open (the one found as the next token of
--- the input) is identical to the last open (the one for the innermost
--- enclosure).
+-- It fails if we're trying to open an already open mark.
 --
--- It takes into account the case that we can open both the innermost open mark
--- and an extension of it (e.g., "@**@" is an extension of "@*@").
--- This function doesn't fail in this case, and the parser will try to open the
--- extended mark.
+-- It takes into account the case that we can open both an arleady open mark and
+-- an extension of it (e.g., "@**@" is an extension of "@*@"). This function
+-- doesn't fail in this case, and the parser will try to open the extended mark.
 phiP :: Monad m => Parser m ()
 phiP = do
   Parsec.label (pure ()) "PHI"
   st <- Parsec.getState
-  case openEnclosures st of
-    (e : _es) ->
-      Parsec.notFollowedBy (markP e)
-        <|> () <$ Parsec.lookAhead (choice $ markP <$> extendedMarksOf e)
-    [] -> pure ()
+  Parsec.notFollowedBy (choice $ markP <$> openEnclosures st)
+    <|> () <$ Parsec.lookAhead (choice $ markP <$> concatMap extendedMarksOf (openEnclosures st))
 
 -- | Function called before the opening mark for a constrained enclosure (i.e.,
 -- before a character of kind other).
 --
--- It fails if the mark we're trying to open (the one found as the next token of
--- the input) is identical to the last open (the one for the innermost
--- enclosure).
-psiP :: Monad m => Parser m ()
-psiP = do
-  Parsec.label (pure ()) "PSI"
+-- It fails if we're trying to open an already open mark.
+varphiP :: Monad m => Parser m ()
+varphiP = do
+  Parsec.label (pure ()) "VARPHI"
   st <- Parsec.getState
-  case openEnclosures st of
-    (e : _es) -> Parsec.notFollowedBy (markP e)
-    [] -> pure ()
+  Parsec.notFollowedBy $ choice $ markP <$> openEnclosures st
 
 -- | Function called after a character of kind alphanum or other, and before the
 -- closing mark for a constrained enclosure (i.e., before a character of kind
