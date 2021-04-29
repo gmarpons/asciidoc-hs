@@ -26,11 +26,14 @@
 --
 -- These groups of characters govern how constrained enclosures are parsed.
 module Text.AsciiDoc.Inlines
-  ( Inline (..),
-    inlinesP,
+  ( -- * AST types
+    Inline (..),
     Style (..),
     ParameterList (..),
     defaultParameterList,
+
+    -- * Parsers
+    inlinesP,
 
     -- * Parser type
     Parser,

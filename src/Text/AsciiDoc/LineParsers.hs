@@ -97,7 +97,7 @@ blockId =
 
 -- | Accepts an square-bracket-enclosed string with almost no restrictions on
 -- the characters in between. Only the very first character needs to be one of
--- the following list: @[',', '.', '#', '%', '_', 'º', 'ª', '\'', '"']@.
+-- the following list: @[\',', \'.', \'#', \'%', \'_', \'º', \'ª', \'\'', \'"']@.
 --
 -- The string can be empty.
 blockAttributeList :: LineParser Text
@@ -120,7 +120,7 @@ blockAttributeList = do
 -- of @cs@. Each of these parsers accepts any run of @n@ or more consecutive
 -- appearances of @c@.
 --
--- Example: @runOfN 4 ['+', '=']@ accepts runs of four or more symbols @"+"@, or
+-- Example: @runOfN 4 [\'+', \'=']@ accepts runs of four or more symbols @"+"@, or
 -- four or more symbols @"="@.
 runOfN :: Int -> [SpecialChar a] -> [LineParser (Marker a)]
 runOfN n = fmap $ \c ->

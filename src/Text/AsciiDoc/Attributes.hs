@@ -17,12 +17,14 @@
 --
 -- It tries to be compatible with Asciidoctor.
 module Text.AsciiDoc.Attributes
-  ( -- = Attribute Type
+  ( -- * AST types
     Attribute (..),
-    -- = Attribute Parsing
+
+    -- * Parsers
     AttributeParser,
     pAttributeList,
     pAttributeShorthandSyntax,
+    CommaAcceptance (..),
   )
 where
 

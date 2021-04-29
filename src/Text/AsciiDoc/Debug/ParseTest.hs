@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 module Text.AsciiDoc.Debug.ParseTest

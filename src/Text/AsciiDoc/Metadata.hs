@@ -15,11 +15,13 @@
 -- Its 'Semigroup' and 'Monoid' instances codify the non-trivial rules of
 -- metadata addition.
 module Text.AsciiDoc.Metadata
-  ( -- = Metadata Type
+  ( -- * Metadata Type
     Metadata (..),
-    -- = ToMetadata Class
+
+    -- * ToMetadata Class
     ToMetadata (..),
-    -- = Utility functions
+
+    -- * Utility functions
     parseInline',
   )
 where

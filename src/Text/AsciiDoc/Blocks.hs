@@ -277,7 +277,7 @@ data State = State
     --
     -- For every nestable block we store:
     --
-    -- * The syntactic 'Delimiter' used to open the block.
+    -- * The syntactic 'DelimiterChar' used to open the block.
     --   This is what we need to recognize the matching closing delimiter.
     -- * A stack (represented with a list) of list item markers previously used
     --   in the current (possibly nested, aka multi-level, list).

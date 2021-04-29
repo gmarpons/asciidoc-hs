@@ -9,7 +9,12 @@
 --
 -- Converters from AsciiDoc AST node types to Pandoc AST node types.
 module Text.AsciiDoc.Pandoc
-  ( convertDocument,
+  ( -- * Types
+    Document,
+    Inline,
+
+    -- * Conversions
+    convertDocument,
     convertInline,
   )
 where
@@ -24,10 +29,10 @@ type Document = [Inline]
 convertDocument :: Document -> Pandoc
 convertDocument is =
   -- TODO: Document title is a stub
-  Pandoc.setTitle "Testing Document Title"
-    $ Pandoc.doc
-    $ Pandoc.para
-    $ foldMap convertInline is
+  Pandoc.setTitle "Testing Document Title" $
+    Pandoc.doc $
+      Pandoc.para $
+        foldMap convertInline is
 
 convertInline :: Inline -> Pandoc.Inlines
 convertInline = \case

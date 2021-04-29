@@ -8,7 +8,8 @@
 -- This module contains functions that traverse an AsciiDoc AST and decorate it
 -- with source ranges information.
 module Text.AsciiDoc.SourceRange
-  ( SourcePosition,
+  ( -- * Source ranges
+    SourcePosition,
     SourceRange (..),
     addSourceRanges,
     childInlines,
