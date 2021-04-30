@@ -102,9 +102,10 @@ data Style
   | Custom
   | Italic
   | Monospace
-  | Subscript
-  | Superscript
   deriving (Eq, Show, Typeable, Data)
+
+--  | Subscript
+--  | Superscript
 
 -- | Every formatting 'Mark' maps to a 'Style', and this function computes this
 -- map.
@@ -124,17 +125,17 @@ toStyle = \case
 -- Some inline types can contain other inlines, and there is a constructor
 -- 'InlineSeq' serving as a general inline container.
 data Inline
-  = Newline Text
+  = AlphaNum Text
+  | InlineSeq (NonEmpty Inline)
+  | Newline Text
   | Space Text
-  | InlineMacro Text
-  | AlphaNum Text
   | StyledText Style (ParameterList Text) Text (NonEmpty Inline) Text
   | Symbol Text
-  | EscapedSymbol Text
-  | DoubleEscapedSymbol Text
-  | Word Text
-  | InlineSeq (NonEmpty Inline)
   deriving (Eq, Show, Typeable, Data)
+
+--  | InlineMacro Text
+--  | EscapedSymbol Text
+--  | DoubleEscapedSymbol Text
 
 -- EBNF grammar non-terminal symbols  ------------------------------------------
 
