@@ -17,7 +17,7 @@ import Text.AsciiDoc.Inlines (Inline (..))
 import Text.AsciiDoc.Metadata
 
 parseBlockPrefix :: [Text] -> IO (NonEmpty (BlockPrefixItem Inline))
-parseBlockPrefix t = case parseTest pBlockPrefix t of
+parseBlockPrefix t = case parseTest blockPrefixP t of
   Right prefix -> pure $ fmap (fmap parseInline'') prefix
   Left parseError -> assertFailure $ "Parser fails: " <> show parseError
 

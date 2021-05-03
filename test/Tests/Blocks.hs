@@ -16,7 +16,7 @@ import Text.AsciiDoc.Metadata
 import qualified Text.Parsec as Parsec
 
 parseDocument :: [Text] -> IO [Block UnparsedInline]
-parseDocument t = case parseTest pDocument t of
+parseDocument t = case parseTest documentP t of
   Right prefix -> pure prefix
   Left parseError -> assertFailure $ "Parser fails: " <> show parseError
 
