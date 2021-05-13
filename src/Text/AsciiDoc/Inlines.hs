@@ -126,6 +126,7 @@ toStyle = \case
 -- 'InlineSeq' serving as a general inline container.
 data Inline
   = AlphaNum Text
+  | EndOfInline Text
   | InlineSeq (NonEmpty Inline)
   | Newline Text
   | Space Text
@@ -412,8 +413,10 @@ otherP =
 -- https://en.wikipedia.org/wiki/Newline#Representation) as a single newline.
 newlineP :: Monad m => Parser m Inline
 newlineP =
-  Newline <$> newlineP'
+  wrap <$> newlineP' <*> optional Parsec.eof
   where
+    wrap t Nothing = Newline t
+    wrap t (Just ()) = EndOfInline t
     newlineP' :: Monad m => Parser m Text
     newlineP' =
       (<>) <$> singletonP '\r' <*> option "" (singletonP '\n')
