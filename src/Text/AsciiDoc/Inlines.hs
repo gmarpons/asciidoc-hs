@@ -288,8 +288,10 @@ gapP :: Monad m => Parser m (NonEmpty Inline)
 gapP = flip Parsec.label "G" $ some newlineOrSpaceP
   where
     newlineOrSpaceP =
-      spaceP
-        <|> newlineP
+      newlineP
+        -- Inline the definition of spaceP here allows to avoid redundant checks
+        -- against '\n' or '\r'.
+        <|> Space . T.pack . NE.toList <$> some (Parsec.satisfy isSpace)
 
 -- Functions for disambiguating the EBNF grammar  ------------------------------
 
@@ -398,17 +400,6 @@ otherP :: Monad m => Parser m Inline
 otherP =
   Symbol . T.singleton
     <$> Parsec.satisfy (\c -> not (isSpace c || isAlphaNum c))
-
-spaceP :: Monad m => Parser m Inline
-spaceP =
-  Space . T.pack . NE.toList
-    <$> some spaceCharP
-
-spaceCharP :: Monad m => Parser m Char
-spaceCharP = Parsec.satisfy isAsciiDocSpace
-
-isAsciiDocSpace :: Char -> Bool
-isAsciiDocSpace c = isSpace c && c /= '\n'
 
 -- | It parses as newlines the combinations:
 --
