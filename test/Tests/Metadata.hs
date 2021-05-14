@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeApplications #-}
+
 module Tests.Metadata
   ( metadataUnitTests,
   )
@@ -13,12 +15,12 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase)
 import Tests.Blocks (parseTest)
 import Text.AsciiDoc.Blocks
-import Text.AsciiDoc.Inlines (Inline (..))
 import Text.AsciiDoc.Metadata
+import Text.AsciiDoc.UnparsedInline
 
-parseBlockPrefix :: [Text] -> IO (NonEmpty (BlockPrefixItem Inline))
+parseBlockPrefix :: [Text] -> IO (NonEmpty (BlockPrefixItem UnparsedInline))
 parseBlockPrefix t = case parseTest blockPrefixP t of
-  Right prefix -> pure $ fmap (fmap parseInline'') prefix
+  Right prefix -> pure prefix
   Left parseError -> assertFailure $ "Parser fails: " <> show parseError
 
 metadataUnitTests :: TestTree
@@ -28,42 +30,54 @@ metadataUnitTests =
     [ testCase "block title" $ do
         p <- parseBlockPrefix [".Foo"]
         toMetadata p
-          `shouldBe` mempty {metadataTitle = Just (Last (InlineSeq (AlphaNum "Foo" :| [])))},
+          `shouldBe` mempty {metadataTitle = Just (Last (TextLine "Foo" :| []))},
       testCase "standalone block id" $ do
         p <- parseBlockPrefix ["[[Foo]]"]
         toMetadata p
-          `shouldBe` mempty {metadataIds = ["Foo"]},
+          `shouldBe` (mempty @(Metadata UnparsedInline)) {metadataIds = ["Foo"]},
       testCase "two standalone block ids" $ do
         p <- parseBlockPrefix ["[[Foo]]", "[[Bar]]"]
         toMetadata p
-          `shouldBe` mempty {metadataIds = ["Foo", "Bar"]},
+          `shouldBe` (mempty @(Metadata UnparsedInline))
+            { metadataIds = ["Foo", "Bar"]
+            },
       testCase "standalone block style" $ do
         p <- parseBlockPrefix ["[Foo]"]
         toMetadata p
-          `shouldBe` mempty {metadataStyle = Just (Last "Foo")},
+          `shouldBe` (mempty @(Metadata UnparsedInline))
+            { metadataStyle = Just (Last "Foo")
+            },
       testCase "standalone block role" $ do
         p <- parseBlockPrefix ["[.Foo]"]
         -- Compatible with how Asciidoctor cleans style when none is specified
         -- in shortand syntax.
         toMetadata p
-          `shouldBe` mempty {metadataStyle = Just (Last ""), metadataRoles = ["Foo"]},
+          `shouldBe` (mempty @(Metadata UnparsedInline))
+            { metadataStyle = Just (Last ""),
+              metadataRoles = ["Foo"]
+            },
       testCase "positional attributes" $ do
         p <- parseBlockPrefix ["[Foo, Bar, Baz]"]
         toMetadata p
-          `shouldBe` mempty
+          `shouldBe` (mempty @(Metadata UnparsedInline))
             { metadataStyle = Just (Last "Foo"),
               metadataPositionalAttributes = IntMap.fromList [(2, "Bar"), (3, "Baz")]
             },
       testCase "named attribute" $ do
         p <- parseBlockPrefix ["[Foo = Bar]"]
         toMetadata p
-          `shouldBe` mempty {metadataNamedAttributes = Map.fromList [("Foo", "Bar")]},
+          `shouldBe` (mempty @(Metadata UnparsedInline))
+            { metadataNamedAttributes = Map.fromList [("Foo", "Bar")]
+            },
       testCase "standalone option" $ do
         p <- parseBlockPrefix ["[%Foo]"]
         -- Compatible with how Asciidoctor cleans style when none is specified
         -- in shortand syntax.
         toMetadata p
-          `shouldBe` mempty {metadataStyle = Just (Last ""), metadataOptions = ["Foo"]},
+          `shouldBe` (mempty @(Metadata UnparsedInline))
+            { metadataStyle = Just (Last ""),
+              metadataOptions = ["Foo"]
+            },
       testCase "complex example" $ do
         p <-
           parseBlockPrefix
@@ -82,7 +96,7 @@ metadataUnitTests =
               metadataIds = ["Foo", "Bar"],
               metadataRoles = ["Baz", "Foo"],
               metadataOptions = ["Foo", "", "Bar", "Baz"],
-              metadataTitle = Just (Last (AlphaNum "Baz")),
+              metadataTitle = Just (Last (TextLine "Baz" :| [])),
               metadataPositionalAttributes = IntMap.fromList [(2, "Foo"), (4, "Bar")],
               metadataNamedAttributes = Map.fromList [("Foo", "Baz")],
               metadataRoleNamedAttribute = Just (Last ["Baz", "Foo"])

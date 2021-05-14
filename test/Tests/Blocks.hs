@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeApplications #-}
+
 module Tests.Blocks
   ( parseTest,
     blockUnitTests,
@@ -13,6 +15,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertFailure, testCase)
 import Text.AsciiDoc.Blocks
 import Text.AsciiDoc.Metadata
+import Text.AsciiDoc.UnparsedInline
 import qualified Text.Parsec as Parsec
 
 parseDocument :: [Text] -> IO [Block UnparsedInline]
@@ -285,9 +288,9 @@ sectionHeaderUnitTests =
                          ( SectionHeader (TextLine "Foo" :| []) 0
                          )
                      ]
-        let (SectionHeaderBlock (m : _) _) : _ = p
-        toMetadata (fmap parseInline'' m)
-          `shouldBe` mempty
+        let (SectionHeaderBlock prefix _) : _ = p
+        toMetadata prefix
+          `shouldBe` (mempty @(Metadata UnparsedInline))
             { metadataStyle =
                 Just
                   ( Last

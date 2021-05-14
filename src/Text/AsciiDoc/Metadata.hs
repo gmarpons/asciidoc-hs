@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Metadata
@@ -20,26 +21,24 @@ module Text.AsciiDoc.Metadata
 
     -- * ToMetadata Class
     ToMetadata (..),
-
-    -- * Utility functions
-    parseInline',
   )
 where
 
 import qualified Data.IntMap as IntMap
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map as Map
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.AsciiDoc.Attributes
-import Text.AsciiDoc.Inlines
+import Text.AsciiDoc.UnparsedInline
 
-data Metadata = Metadata
+data Metadata a = Metadata
   { metadataStyle :: Maybe (Last Text),
     metadataIds :: [Text],
     metadataRoles :: [Text],
     metadataOptions :: [Text],
-    metadataTitle :: Maybe (Last Inline),
+    metadataTitle :: Maybe (Last a),
     metadataPositionalAttributes :: IntMap.IntMap Text,
     -- | Named attributes different than @id@, @opts@, @options@, @role@ and
     -- @title@.
@@ -48,7 +47,7 @@ data Metadata = Metadata
   }
   deriving (Eq, Show)
 
-instance Semigroup Metadata where
+instance Semigroup (Metadata a) where
   x <> y =
     let a = metadataStyle x <> metadataStyle y
         b = metadataIds x <> metadataIds y
@@ -80,7 +79,7 @@ instance Semigroup Metadata where
             metadataRoleNamedAttribute = h
           }
 
-instance Monoid Metadata where
+instance Monoid (Metadata a) where
   mempty =
     Metadata
       { metadataStyle = mempty,
@@ -93,31 +92,31 @@ instance Monoid Metadata where
         metadataRoleNamedAttribute = mempty
       }
 
-class ToMetadata a where
-  toMetadata :: a -> Metadata
+class ToMetadata b a where
+  toMetadata :: b -> Metadata a
 
-instance ToMetadata (Int, Attribute) where
-  toMetadata (index, PositionalAttribute p) =
+instance ToMetadata PositionedAttribute UnparsedInline where
+  toMetadata (PositionedAttribute (index, PositionalAttribute p)) =
     mempty {metadataPositionalAttributes = IntMap.singleton index p}
   -- Special treatment of attribute names: @id@, @opts@, @options@, @role@ and
   -- @title@.
-  toMetadata (_, NamedAttribute "id" v) =
+  toMetadata (PositionedAttribute (_, NamedAttribute "id" v)) =
     mempty {metadataIds = [v]}
-  toMetadata (_, NamedAttribute "opts" v) =
+  toMetadata (PositionedAttribute (_, NamedAttribute "opts" v)) =
     mempty {metadataOptions = [v]}
-  toMetadata (_, NamedAttribute "options" v) =
+  toMetadata (PositionedAttribute (_, NamedAttribute "options" v)) =
     mempty {metadataOptions = [v]}
-  toMetadata (_, NamedAttribute "role" v) =
+  toMetadata (PositionedAttribute (_, NamedAttribute "role" v)) =
     mempty
       { metadataRoles = T.words v,
         metadataRoleNamedAttribute = Just $ Last $ T.words v
       }
-  toMetadata (_, NamedAttribute "title" v) =
-    mempty {metadataTitle = Just $ Last $ parseInline' v}
+  toMetadata (PositionedAttribute (_, NamedAttribute "title" v)) =
+    mempty {metadataTitle = Just $ Last $ TextLine v :| []}
   -- Any other named attribute
-  toMetadata (_, NamedAttribute k v) =
+  toMetadata (PositionedAttribute (_, NamedAttribute k v)) =
     mempty {metadataNamedAttributes = Map.singleton k v}
-  toMetadata (_, ShorthandSyntaxAttribute s i r o) =
+  toMetadata (PositionedAttribute (_, ShorthandSyntaxAttribute s i r o)) =
     mempty
       { metadataStyle = Just (Last s),
         metadataIds = i,
@@ -127,11 +126,7 @@ instance ToMetadata (Int, Attribute) where
 
 instance
   {-# OVERLAPPABLE #-}
-  (Foldable f, ToMetadata a) =>
-  ToMetadata (f a)
+  (Foldable f, ToMetadata b a) =>
+  ToMetadata (f b) a
   where
   toMetadata = foldMap toMetadata
-
--- | Stub until proper inline parsing is implemented.
-parseInline' :: Text -> Inline
-parseInline' = AlphaNum

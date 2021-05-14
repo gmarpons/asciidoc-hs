@@ -1,6 +1,9 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Blocks
@@ -32,8 +35,6 @@ module Text.AsciiDoc.Blocks
     MetadataItem (..),
     BlockPrefixItem (..),
     Block (..),
-    UnparsedInline,
-    UnparsedLine (..),
 
     -- * Parsers
     documentP,
@@ -64,9 +65,6 @@ module Text.AsciiDoc.Blocks
     openDelimiterP,
     closeDelimiterP,
     satisfyToken,
-
-    -- * Testing
-    parseInline'',
   )
 where
 
@@ -83,15 +81,15 @@ import Data.Char (isSpace)
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (catMaybes)
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Text.AsciiDoc.Attributes as Attributes
-import Text.AsciiDoc.Inlines hiding (Parser, State)
 import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
 import Text.AsciiDoc.SpecialChars
+import Text.AsciiDoc.UnparsedInline
 import Text.Parsec ((<?>))
 import qualified Text.Parsec as Parsec
 import Text.Parsec.Char (alphaNum, char, space)
@@ -202,73 +200,64 @@ data MetadataItem a
     BlockAttributeList Text
   deriving (Eq, Show, Functor)
 
-instance ToMetadata (MetadataItem Inline) where
+instance ToMetadata (MetadataItem UnparsedInline) UnparsedInline where
   toMetadata (BlockId i) = mempty {metadataIds = [i]}
   toMetadata (BlockTitle t) = mempty {metadataTitle = Just $ Last t}
   toMetadata (BlockAttributeList "") = mempty
   toMetadata (BlockAttributeList t) =
     case Parsec.parse Attributes.pAttributeList "" t of
       Right attributes ->
-        toMetadata $ NE.zip (1 :| [2 ..] :: NonEmpty Int) attributes
-      Left _ -> error "toMetadata @(MetadataItem Inline): parse should not fail"
+        toMetadata $ Attributes.PositionedAttribute <$> NE.zip (1 :| [2 ..]) attributes
+      Left _ -> error "toMetadata @(MetadataItem UnparsedInline): parse should not fail"
 
 data BlockPrefixItem a
   = MetadataItem (MetadataItem a)
   | -- | A value of @Nothing@ means the attribute has been unset.
-    AttributeEntry AttributeId (Maybe Inline)
+    AttributeEntry AttributeId (Maybe a)
   | Comment Comment
   deriving (Eq, Show, Functor)
 
-instance ToMetadata (BlockPrefixItem Inline) where
+instance ToMetadata (BlockPrefixItem UnparsedInline) UnparsedInline where
   toMetadata (MetadataItem x) = toMetadata x
   toMetadata (AttributeEntry _ _) = mempty
   toMetadata (Comment _) = mempty
+
+type UnparsedBlockPrefix = [BlockPrefixItem UnparsedInline]
 
 -- | A Block consists, syntactically, of one or more contiguous and complete
 -- lines of text. Some block types can contain other blocks.
 data Block a
   = -- | Regular paragraph.
-    Paragraph [BlockPrefixItem UnparsedInline] a
+    Paragraph UnparsedBlockPrefix a
   | -- | This data constructor is not used during parsing, it requires an
     -- additional "nesting" pass.
     --
     -- There can be a @Section@ inside an, e.g., open block, but it needs to
     -- have style @discrete@.
-    Section [BlockPrefixItem UnparsedInline] (SectionHeader a) [Block a]
+    Section UnparsedBlockPrefix (SectionHeader a) [Block a]
   | -- |
-    SectionHeaderBlock [BlockPrefixItem UnparsedInline] (SectionHeader a)
-  | List ListType [BlockPrefixItem UnparsedInline] (NonEmpty (NonEmpty (Block a)))
+    SectionHeaderBlock UnparsedBlockPrefix (SectionHeader a)
+  | List ListType UnparsedBlockPrefix (NonEmpty (NonEmpty (Block a)))
   | Table {- TODO. Many things here -}
-  | ThematicBreak [BlockPrefixItem UnparsedInline]
-  | PageBreak [BlockPrefixItem UnparsedInline]
+  | ThematicBreak UnparsedBlockPrefix
+  | PageBreak UnparsedBlockPrefix
   | -- | Sequence of blocks of some defined type that allows nested blocks
     -- inside (i.e. admonition, sidebar, example, quote, and open block with no
     -- other standard type).
-    Nestable NestableBlockType [BlockPrefixItem UnparsedInline] [Block a]
-  | VerseBlock [BlockPrefixItem UnparsedInline] [a]
+    Nestable NestableBlockType UnparsedBlockPrefix [Block a]
+  | VerseBlock UnparsedBlockPrefix [a]
   | -- | Block type determines substitution group applied: @Verbatim@ or @None@
     -- (aka passthrough).
     --
     -- TODO: Check that designed pipeline guarantees that pre-processor
     -- directives are expanded (if not escaped) even in literal blocks, as
     -- https://asciidoctor.org/docs/user-manual/#include-processing states.
-    LiteralBlock LiteralBlockType [BlockPrefixItem UnparsedInline] [Text]
+    LiteralBlock LiteralBlockType UnparsedBlockPrefix [Text]
   | -- | Some macros accept block metadata, as e.g. @toc::[]@, that accepts
     -- defining its title with @.TITLE@ syntax.
-    BlockMacro BlockMacroType [BlockPrefixItem UnparsedInline] MacroArguments
-  | DanglingBlockPrefix [BlockPrefixItem UnparsedInline]
+    BlockMacro BlockMacroType UnparsedBlockPrefix MacroArguments
+  | DanglingBlockPrefix UnparsedBlockPrefix
   deriving (Eq, Show, Functor)
-
--- INVARIANT: The first element is always a TextLine. This guarantees that an
--- UnparsedInline can always be converted to an Inline.
---
--- TODO: Document how this invariant is preserved.
-type UnparsedInline = NonEmpty UnparsedLine
-
-data UnparsedLine
-  = TextLine Text
-  | CommentLine Text
-  deriving (Eq, Show)
 
 -- | Custom parser state for the parser for 'Block's.
 data State = State
@@ -289,7 +278,7 @@ data State = State
     -- one-element stack indicates no nestable block has been open.
     openBlocks :: NonEmpty (Marker DelimiterChar, [Marker ListChar]),
     -- | An environment mapping attribute names to their values (i.e. inlines).
-    env :: Map.Map AttributeId Inline
+    env :: Map.Map AttributeId Text
   }
   deriving (Eq, Show)
 
@@ -364,7 +353,7 @@ lineCommentP =
   lineP (LP.string "//" *> Parsec.notFollowedBy (char '/') *> LP.anyRemainder)
 
 -- TODO. Add attribute continuations.
-attributeEntryP :: Monad m => Parser m (BlockPrefixItem a)
+attributeEntryP :: Monad m => Parser m (BlockPrefixItem UnparsedInline)
 attributeEntryP = attributeEntryP' <* many blankLineP
   where
     attributeEntryP' = do
@@ -374,11 +363,8 @@ attributeEntryP = attributeEntryP' <* many blankLineP
               <* LP.char ':'
               <* LP.some space <*> LP.anyRemainder
           )
-      -- TODO. Replace to a general parseInline with a SubstitutionGroup
-      -- parameter.
-      let v' = parseInline' v
-      Parsec.modifyState $ \st -> st {env = Map.insert k v' (env st)}
-      pure $ AttributeEntry k $ Just (parseInline' v)
+      Parsec.modifyState $ \st -> st {env = Map.insert k v (env st)}
+      pure $ AttributeEntry k $ Just (TextLine v :| [])
 
 blockIdP :: Monad m => Parser m (BlockPrefixItem a)
 blockIdP = blockIdP' <* many blankLineP
@@ -402,7 +388,7 @@ blockTitleP = blockTitleP' <* many blankLineP
 -- | Parses a nestable delimited block.
 nestableP ::
   Monad m =>
-  [BlockPrefixItem UnparsedInline] ->
+  UnparsedBlockPrefix ->
   Parser m (Block UnparsedInline)
 nestableP prefix = do
   c <- openDelimiterP [AsteriskD, EqualsSignD]
@@ -415,10 +401,10 @@ nestableP prefix = do
 
 -- | Parses a section header and computes its level.
 --
--- __POST-CONDITION__: The computed level is greater or equal to 0.
+-- __POST-CONDITION__: The computed level is greater or equal than 0.
 sectionHeaderP ::
   Monad m =>
-  [BlockPrefixItem UnparsedInline] ->
+  UnparsedBlockPrefix ->
   Parser m (Block UnparsedInline)
 sectionHeaderP prefix = do
   -- Post-condition above follows from the fact that 'LP.runOfN 1' can only
@@ -439,6 +425,7 @@ sectionHeaderP prefix = do
       _ <- many blankLineP
       pure $ SectionHeaderBlock prefix header
   where
+    sectionHeaderP' :: Monad m => Parser m (SectionHeader UnparsedInline)
     sectionHeaderP' =
       (\(_c :* n, value) -> SectionHeader (TextLine value :| []) (n - 1))
         <$> lineP
@@ -446,11 +433,11 @@ sectionHeaderP prefix = do
               <$> choice (LP.runOfN 1 [EqualsSignH]) <* some space
                 <*> (LP.satisfy (not . isSpace) <> LP.anyRemainder)
           )
-    style = metadataStyle $ toMetadata $ fmap (fmap parseInline'') prefix
+    style = metadataStyle $ toMetadata @UnparsedBlockPrefix @UnparsedInline $ prefix
 
 listP ::
   (Monad m) =>
-  [BlockPrefixItem UnparsedInline] ->
+  UnparsedBlockPrefix ->
   Parser m (Block UnparsedInline)
 listP prefix =
   listP' prefix <* many blankLineP
@@ -538,7 +525,7 @@ listP prefix =
 
 paragraphP ::
   Monad m =>
-  [BlockPrefixItem UnparsedInline] ->
+  UnparsedBlockPrefix ->
   [LP.LineParser Text] ->
   Parser m (Block UnparsedInline)
 paragraphP prefix extraFinalizers =
@@ -583,7 +570,7 @@ paragraphContinuationP extraFinalizers =
 
 danglingBlockPrefixP ::
   Monad m =>
-  [BlockPrefixItem UnparsedInline] ->
+  UnparsedBlockPrefix ->
   Parser m (Block UnparsedInline)
 danglingBlockPrefixP [] = empty
 danglingBlockPrefixP prefix =
@@ -736,13 +723,3 @@ satisfyToken matcher = Parsec.tokenPrim show updatePos matcher
     updatePos :: Parsec.SourcePos -> Text -> [Text] -> Parsec.SourcePos
     updatePos pos _ _ = Parsec.incSourceLine pos 1
 {-# ANN satisfyToken ("HLint: ignore" :: String) #-}
-
--- | TODO. Stub until proper inline parsing is implemented.
-parseInline'' :: UnparsedInline -> Inline
-parseInline'' (TextLine first :| following) =
-  InlineSeq $ AlphaNum first :| mapMaybe parse following
-  where
-    parse (TextLine t) = Just $ AlphaNum t
-    parse (CommentLine _) = Nothing
--- See INVARIANT.
-parseInline'' _ = error "parseInline'': First element should be a TextLine"

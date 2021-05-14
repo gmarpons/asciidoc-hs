@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleInstances #-}
-
 -- |
 -- Module      :  Text.AsciiDoc.Attributes
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -19,6 +17,7 @@
 module Text.AsciiDoc.Attributes
   ( -- * AST types
     Attribute (..),
+    PositionedAttribute (..),
 
     -- * Parsers
     AttributeParser,
@@ -60,6 +59,8 @@ data Attribute
     ShorthandSyntaxAttribute Text [Text] [Text] [Text]
   deriving (Eq, Show)
 
+newtype PositionedAttribute = PositionedAttribute (Int, Attribute)
+
 type AttributeParser = LP.LineParser
 
 data Position
@@ -87,7 +88,7 @@ pAttributeList :: AttributeParser (NonEmpty Attribute)
 pAttributeList =
   (:|)
     <$> pAttribute Start
-    <*> (option [] (pSep *> sepBy (pAttribute Other) pSep)) <* Parsec.eof
+    <*> option [] (pSep *> sepBy (pAttribute Other) pSep) <* Parsec.eof
   where
     pAttribute position =
       Parsec.try (pQuoted position '"' <* many Parsec.space <* pEnd)
@@ -132,7 +133,7 @@ pAttributeList =
                 <> LP.manyText (LP.satisfy (\c -> c /= quote && c /= '\\'))
             )
     pUnquotedValue :: AttributeParser Text
-    pUnquotedValue = (T.strip . T.pack) <$> many (Parsec.satisfy (/= ','))
+    pUnquotedValue = T.strip . T.pack <$> many (Parsec.satisfy (/= ','))
     pNamed :: AttributeParser Attribute
     pNamed =
       NamedAttribute
@@ -154,11 +155,11 @@ data CommaAcceptance
 
 pAttributeShorthandSyntax :: CommaAcceptance -> AttributeParser Attribute
 pAttributeShorthandSyntax commaAcceptance =
-  f <$> someTill pPermutation pEnd
+  wrap <$> someTill pPermutation pEnd
   where
     -- Use monoid instances of (,), Text and [] to collect ids, roles and
     -- options.
-    f ((s, (i, (r, o))) :| xs) =
+    wrap ((s, (i, (r, o))) :| xs) =
       ShorthandSyntaxAttribute
         s
         (i <> (fst . snd . fold) xs)
@@ -176,8 +177,9 @@ pAttributeShorthandSyntax commaAcceptance =
     pIdentifier = (: []) <$ Parsec.char '#' <*> LP.many anyChar
     pRole = (: []) <$ Parsec.char '.' <*> LP.many anyChar
     pOption = (: []) <$ Parsec.char '%' <*> LP.many anyChar
-    anyChar = Parsec.noneOf $
-      [' ', '#', '.', '%'] <> case commaAcceptance of
-        AcceptCommas -> []
-        RejectCommas -> [',']
+    anyChar =
+      Parsec.noneOf $
+        [' ', '#', '.', '%'] <> case commaAcceptance of
+          AcceptCommas -> []
+          RejectCommas -> [',']
     pEnd = Parsec.lookAhead $ eitherP Parsec.eof $ Parsec.oneOf [' ', ',']

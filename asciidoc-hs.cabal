@@ -25,6 +25,7 @@ library
                         Text.AsciiDoc.Pandoc
                         Text.AsciiDoc.SourceRange
                         Text.AsciiDoc.SpecialChars
+                        Text.AsciiDoc.UnparsedInline
   build-depends:        base >= 4.12.0.0,
                         containers >= 0.6,
                         optics-core >= 0.2,
@@ -102,6 +103,7 @@ library debug-with-parsec-free
                         Text.AsciiDoc.Pandoc
                         Text.AsciiDoc.SourceRange
                         Text.AsciiDoc.SpecialChars
+                        Text.AsciiDoc.UnparsedInline
   build-depends:        base >= 4.12.0.0,
                         containers >= 0.6,
                         mtl,
