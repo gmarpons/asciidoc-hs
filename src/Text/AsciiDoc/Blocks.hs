@@ -205,7 +205,7 @@ instance ToMetadata (MetadataItem UnparsedInline) UnparsedInline where
   toMetadata (BlockTitle t) = mempty {metadataTitle = Just $ Last t}
   toMetadata (BlockAttributeList "") = mempty
   toMetadata (BlockAttributeList t) =
-    case Parsec.parse Attributes.pAttributeList "" t of
+    case Parsec.parse Attributes.attributeListP "" t of
       Right attributes ->
         toMetadata $ Attributes.PositionedAttribute <$> NE.zip (1 :| [2 ..]) attributes
       Left _ -> error "toMetadata @(MetadataItem UnparsedInline): parse should not fail"
@@ -452,7 +452,7 @@ listP prefix =
           (currentBlock, otherBlocks) = NE.head &&& NE.tail $ openBlocks state
       -- Accept item with a new marker
       (marker@(c :* n), firstLine) <-
-        pItemFirstLine allowedMarkers disallowedMarkers
+        itemFirstLineP allowedMarkers disallowedMarkers
       -- Add new marker to the state
       Parsec.setState $
         state
@@ -461,19 +461,19 @@ listP prefix =
           }
       -- Complete the first item, using the already parsed first line
       firstItem <-
-        pItem firstLine
+        itemP firstLine
           <?> "first item " <> T.unpack (fromMarker marker)
       -- Accept items with the same marker of the first item
       nextItems <-
         many
-          ( pItemFirstLine [LP.count n c] []
-              >>= pItem . snd <?> "item " <> T.unpack (fromMarker marker)
+          ( itemFirstLineP [LP.count n c] []
+              >>= itemP . snd <?> "item " <> T.unpack (fromMarker marker)
           )
       -- Recover state present at the beginning of the function. Functions like
       -- pItem could have modified it.
       Parsec.setState state
       pure $ List (Unordered Nothing) prefix' (firstItem :| nextItems)
-    pItemFirstLine =
+    itemFirstLineP =
       \x -> lineP . itemFirstLine x
     itemFirstLine ::
       [LP.LineParser (Marker ListChar)] ->
@@ -488,7 +488,7 @@ listP prefix =
           _ <- some space
           remainder <- LP.satisfy (not . isSpace) <> LP.anyRemainder
           pure (marker, remainder)
-    pItem firstLine = do
+    itemP firstLine = do
       -- As we are inside a list, any list marker is a finalizer of the current
       -- item (no blank line needed)
       nextLines <-
@@ -497,8 +497,8 @@ listP prefix =
       nextBlocks <-
         option
           []
-          ( ((: []) <$> pSublist <?> "sublist")
-              <|> catMaybes <$> many (pListContinuation <?> "list continuation")
+          ( ((: []) <$> sublistP <?> "sublist")
+              <|> catMaybes <$> many (listContinuationP <?> "list continuation")
               <?> "next blocks"
           )
       _ <- many blankLineP
@@ -511,14 +511,14 @@ listP prefix =
     --
     -- Probably a linter should warn against any block prefix not preceded by
     -- blank lines.
-    pSublist = Parsec.try $ do
+    sublistP = Parsec.try $ do
       _ <- many blankLineP
       prefix' <- option [] (NE.toList <$> blockPrefixP)
       listP prefix'
     -- __Divergence DVB002 from Asciidoctor__: As in classic AsciiDoc, no blank
     -- lines are allowed before the @+@ sign.
-    pListContinuation :: Monad m => Parser m (Maybe (Block UnparsedInline))
-    pListContinuation =
+    listContinuationP :: Monad m => Parser m (Maybe (Block UnparsedInline))
+    listContinuationP =
       lineP (LP.char '+')
         *> optional blankLineP
         *> optional (blockP [snd <$> itemFirstLine allUnorderedMarkers []])
@@ -532,9 +532,9 @@ paragraphP prefix extraFinalizers =
   Paragraph prefix <$> paragraphP' <* many blankLineP
   where
     paragraphP' =
-      (:|) <$> pFirst <*> many (paragraphContinuationP extraFinalizers <?> "paragraph continuation")
-    pFirst :: Monad m => Parser m UnparsedLine
-    pFirst =
+      (:|) <$> firstP <*> many (paragraphContinuationP extraFinalizers <?> "paragraph continuation")
+    firstP :: Monad m => Parser m UnparsedLine
+    firstP =
       TextLine
         <$> lineNoneOfP
           -- Nestable

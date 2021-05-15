@@ -21,8 +21,8 @@ module Text.AsciiDoc.Attributes
 
     -- * Parsers
     AttributeParser,
-    pAttributeList,
-    pAttributeShorthandSyntax,
+    attributeListP,
+    attributeShorthandSyntaxP,
     CommaAcceptance (..),
   )
 where
@@ -84,21 +84,21 @@ data Position
 -- different attributes, and this function considers it a non-quoted single
 -- attribute (i.e., quotes are part of the attribute and commas break the
 -- string).
-pAttributeList :: AttributeParser (NonEmpty Attribute)
-pAttributeList =
+attributeListP :: AttributeParser (NonEmpty Attribute)
+attributeListP =
   (:|)
-    <$> pAttribute Start
-    <*> option [] (pSep *> sepBy (pAttribute Other) pSep) <* Parsec.eof
+    <$> attributeP Start
+    <*> option [] (sepP *> sepBy (attributeP Other) sepP) <* Parsec.eof
   where
-    pAttribute position =
-      Parsec.try (pQuoted position '"' <* many Parsec.space <* pEnd)
-        <|> Parsec.try (pQuoted position '\'' <* many Parsec.space <* pEnd)
-        <|> pUnquoted position <* many Parsec.space <* pEnd
-    pQuoted :: Position -> Char -> AttributeParser Attribute
-    pQuoted position quote = do
-      v <- pQuotedValue quote
+    attributeP position =
+      Parsec.try (quotedP position '"' <* many Parsec.space <* endP)
+        <|> Parsec.try (quotedP position '\'' <* many Parsec.space <* endP)
+        <|> unquotedP position <* many Parsec.space <* endP
+    quotedP :: Position -> Char -> AttributeParser Attribute
+    quotedP position quote = do
+      v <- quotedValueP quote
       let shorthandOrError =
-            Parsec.parse (pAttributeShorthandSyntax AcceptCommas <* Parsec.eof) "" v
+            Parsec.parse (attributeShorthandSyntaxP AcceptCommas <* Parsec.eof) "" v
       case (position, shorthandOrError) of
         -- First positional attribute, shorthand syntax accepted
         (Start, Right shorthand) -> pure shorthand
@@ -107,55 +107,55 @@ pAttributeList =
         (Start, Left _) -> pure $ PositionalAttribute v
         -- Position different from first: regular positional attribute
         (Other, _) -> pure $ PositionalAttribute v
-    pUnquoted Start =
-      Parsec.try pUnquotedShorthand
-        <|> Parsec.try pNamed
-        <|> pPositional
-    pUnquoted Other =
-      Parsec.try pNamed
-        <|> pPositional
-    pUnquotedShorthand = do
+    unquotedP Start =
+      Parsec.try unquotedShorthandP
+        <|> Parsec.try namedP
+        <|> positionalP
+    unquotedP Other =
+      Parsec.try namedP
+        <|> positionalP
+    unquotedShorthandP = do
       shorthand <-
         -- Parsec.try not needed because this functions is only ever called
         -- inside a Parsec.try.
-        pAttributeShorthandSyntax RejectCommas <* many Parsec.space <* pEnd
+        attributeShorthandSyntaxP RejectCommas <* many Parsec.space <* endP
       case shorthand of
         -- No '=' found in the first segment of the potential shorthand syntax
         ShorthandSyntaxAttribute style _ _ _
           | T.all (/= '=') style -> pure shorthand
         _ -> empty
-    pQuotedValue :: Char -> AttributeParser Text
-    pQuotedValue quote =
+    quotedValueP :: Char -> AttributeParser Text
+    quotedValueP quote =
       between (Parsec.char quote) (Parsec.char quote) $
         LP.manyText (LP.satisfy (\c -> c /= quote && c /= '\\'))
           <> LP.manyText
             ( (Parsec.try (LP.char '\\' *> LP.char quote) <|> LP.char '\\')
                 <> LP.manyText (LP.satisfy (\c -> c /= quote && c /= '\\'))
             )
-    pUnquotedValue :: AttributeParser Text
-    pUnquotedValue = T.strip . T.pack <$> many (Parsec.satisfy (/= ','))
-    pNamed :: AttributeParser Attribute
-    pNamed =
+    unquotedValueP :: AttributeParser Text
+    unquotedValueP = T.strip . T.pack <$> many (Parsec.satisfy (/= ','))
+    namedP :: AttributeParser Attribute
+    namedP =
       NamedAttribute
-        <$> pName <* Parsec.char '=' <* many Parsec.space <*> pValue
-    pName :: AttributeParser Text
-    pName = LP.some (Parsec.noneOf [' ', ',', '=']) <* many Parsec.space
-    pValue =
-      Parsec.try (pQuotedValue '"')
-        <|> Parsec.try (pQuotedValue '\'')
-        <|> pUnquotedValue
-    pPositional = PositionalAttribute <$> pUnquotedValue
-    pSep = Parsec.char ',' <* many Parsec.space
-    pEnd = Parsec.lookAhead $ eitherP (LP.char ',') Parsec.eof
+        <$> nameP <* Parsec.char '=' <* many Parsec.space <*> valueP
+    nameP :: AttributeParser Text
+    nameP = LP.some (Parsec.noneOf [' ', ',', '=']) <* many Parsec.space
+    valueP =
+      Parsec.try (quotedValueP '"')
+        <|> Parsec.try (quotedValueP '\'')
+        <|> unquotedValueP
+    positionalP = PositionalAttribute <$> unquotedValueP
+    sepP = Parsec.char ',' <* many Parsec.space
+    endP = Parsec.lookAhead $ eitherP (LP.char ',') Parsec.eof
 
 data CommaAcceptance
   = AcceptCommas
   | RejectCommas
   deriving (Eq, Show)
 
-pAttributeShorthandSyntax :: CommaAcceptance -> AttributeParser Attribute
-pAttributeShorthandSyntax commaAcceptance =
-  wrap <$> someTill pPermutation pEnd
+attributeShorthandSyntaxP :: CommaAcceptance -> AttributeParser Attribute
+attributeShorthandSyntaxP commaAcceptance =
+  wrap <$> someTill permutationP endP
   where
     -- Use monoid instances of (,), Text and [] to collect ids, roles and
     -- options.
@@ -165,21 +165,21 @@ pAttributeShorthandSyntax commaAcceptance =
         (i <> (fst . snd . fold) xs)
         (r <> (fst . snd . snd . fold) xs)
         (o <> (snd . snd . snd . fold) xs)
-    pPermutation :: AttributeParser (Text, ([Text], ([Text], [Text])))
-    pPermutation =
+    permutationP :: AttributeParser (Text, ([Text], ([Text], [Text])))
+    permutationP =
       runPermutation $
         (\s i r o -> (s, (i, (r, o))))
-          <$> toPermutationWithDefault "" pStyle
-          <*> toPermutationWithDefault [] pIdentifier
-          <*> toPermutationWithDefault [] pRole
-          <*> toPermutationWithDefault [] pOption
-    pStyle = LP.many anyChar
-    pIdentifier = (: []) <$ Parsec.char '#' <*> LP.many anyChar
-    pRole = (: []) <$ Parsec.char '.' <*> LP.many anyChar
-    pOption = (: []) <$ Parsec.char '%' <*> LP.many anyChar
+          <$> toPermutationWithDefault "" styleP
+          <*> toPermutationWithDefault [] identifierP
+          <*> toPermutationWithDefault [] roleP
+          <*> toPermutationWithDefault [] optionP
+    styleP = LP.many anyChar
+    identifierP = (: []) <$ Parsec.char '#' <*> LP.many anyChar
+    roleP = (: []) <$ Parsec.char '.' <*> LP.many anyChar
+    optionP = (: []) <$ Parsec.char '%' <*> LP.many anyChar
     anyChar =
       Parsec.noneOf $
         [' ', '#', '.', '%'] <> case commaAcceptance of
           AcceptCommas -> []
           RejectCommas -> [',']
-    pEnd = Parsec.lookAhead $ eitherP Parsec.eof $ Parsec.oneOf [' ', ',']
+    endP = Parsec.lookAhead $ eitherP Parsec.eof $ Parsec.oneOf [' ', ',']
