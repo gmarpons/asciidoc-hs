@@ -1,3 +1,6 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeApplications #-}
+
 -- |
 -- Module      :  Text.AsciiDoc.Pandoc
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -16,30 +19,73 @@ module Text.AsciiDoc.Pandoc
     -- * Conversions
     convertDocument,
     convertInline,
+
+    -- * TODO
+    parseInlines,
   )
 where
 
+import qualified Data.List.NonEmpty as NE
+import Data.Text (Text)
 import qualified Data.Text as T
+import Text.AsciiDoc.Blocks hiding (Parser)
 import Text.AsciiDoc.Inlines
+import Text.AsciiDoc.Metadata (ToMetadata (toMetadata))
+import Text.AsciiDoc.UnparsedInline
 import qualified Text.Pandoc.Builder as Pandoc
 import Text.Pandoc.Definition (Pandoc)
+import qualified Text.Parsec as Parsec
 
-type Document = [Inline]
+type Document = [Block Inline]
+
+parseInlines :: [Block UnparsedInline] -> Document
+parseInlines = (fmap . fmap) parseInline
+
+parseInline :: UnparsedInline -> Inline
+parseInline x =
+  case Parsec.runParser inlinesP initialState "" (fromUnparsedInline x) of
+    Right result -> result
+    Left parseError -> error $ "parseInlines: " <> show parseError
+  where
+    fromUnparsedInline :: UnparsedInline -> Text
+    fromUnparsedInline = T.unlines . fmap toText . NE.toList
+    toText :: InputLine -> Text
+    toText = \case
+      MarkupLine t -> t
+      CommentLine _ -> ""
 
 convertDocument :: Document -> Pandoc
-convertDocument is =
-  -- TODO: Document title is a stub
+convertDocument bs =
+  -- TODO. Document title is a stub
   Pandoc.setTitle "Testing Document Title" $
     Pandoc.doc $
-      Pandoc.para $
-        foldMap convertInline is
+      foldMap convertBlock bs
+
+convertBlock :: Block Inline -> Pandoc.Blocks
+convertBlock = \case
+  Paragraph _p i -> Pandoc.para $ convertInline i
+  Section _p (SectionHeader i n) bs ->
+    Pandoc.headerWith ("", [], []) (n + 1) (convertInline i) <> foldMap convertBlock bs
+  -- TODO. Add a Metadata value to SectionHeaderBlock and avoid recalculating it
+  SectionHeaderBlock p (SectionHeader i n) ->
+    flip const (toMetadata @[BlockPrefixItem UnparsedInline] @UnparsedInline p) $ Pandoc.headerWith ("", [], []) (n + 1) (convertInline i)
+
+-- List
+-- ThematicBreak
+-- PageBreak
+-- Nestable
+-- VerseBlock ([BlockPrefixItem UnparsedInline]) ([a])
+-- LiteralBlock LiteralBlockType ([BlockPrefixItem UnparsedInline]) ([Text])
+-- BlockMacro BlockMacroType ([BlockPrefixItem UnparsedInline]) MacroArguments
+-- DanglingBlockPrefixP ([BlockPrefixItem UnparsedInline])
 
 convertInline :: Inline -> Pandoc.Inlines
 convertInline = \case
   AlphaNum t -> Pandoc.str t
-  Newline _ -> Pandoc.softbreak
-  Space _ -> Pandoc.space
-  InlineSeq inlines -> Pandoc.spanWith ("", [], []) $ foldMap convertInline inlines
+  EndOfInline _ -> mempty
+  Newline t -> Pandoc.str t
+  Space t -> Pandoc.str t -- Pandoc.space
+  InlineSeq inlines -> {- Pandoc.spanWith ("", [], []) $ -} foldMap convertInline inlines
   StyledText Bold (ParameterList parameters) _ inlines _
     | T.null parameters ->
       Pandoc.strong $ foldMap convertInline inlines
