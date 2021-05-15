@@ -30,7 +30,7 @@ import qualified Data.Map as Map
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
-import Text.AsciiDoc.Attributes
+import Text.AsciiDoc.ElementAttributes
 import Text.AsciiDoc.UnparsedInline
 
 data Metadata a = Metadata

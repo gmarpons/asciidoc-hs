@@ -17,7 +17,7 @@ extra-source-files:     CHANGELOG.adoc,
 
 library
   hs-source-dirs:       src
-  exposed-modules:      Text.AsciiDoc.Attributes
+  exposed-modules:      Text.AsciiDoc.ElementAttributes
                         Text.AsciiDoc.Blocks
                         Text.AsciiDoc.Inlines
                         Text.AsciiDoc.LineParsers
@@ -96,7 +96,7 @@ library debug-with-parsec-free
   hs-source-dirs:       src
   exposed-modules:      Text.AsciiDoc.Debug.ParseTest
   other-modules:        Text.AsciiDoc.Blocks
-                        Text.AsciiDoc.Attributes
+                        Text.AsciiDoc.ElementAttributes
                         Text.AsciiDoc.Inlines
                         Text.AsciiDoc.LineParsers
                         Text.AsciiDoc.Metadata

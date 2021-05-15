@@ -1,5 +1,5 @@
 -- |
--- Module      :  Text.AsciiDoc.Attributes
+-- Module      :  Text.AsciiDoc.ElementAttributes
 -- Copyright   :  © 2020–present Guillem Marpons
 -- License     :  BSD-3-Clause
 --
@@ -7,16 +7,17 @@
 -- Stability   :  experimental
 -- Portability :  portable
 --
--- Implementation of the Attribute Language for AsciiDoc, i.e., the language for
--- describing properties (styles, identifiers, roles, named attributes, etc.) of
--- entities like inlines and blocks.
+-- Implementation of the Element Attribute Language for AsciiDoc, i.e., the
+-- language for describing properties (styles, identifiers, roles, named
+-- attributes, etc.) of entities like inlines and blocks.
 --
 -- This module contains Parsec-style parsers for the aforementioned language.
 --
 -- It tries to be compatible with Asciidoctor.
-module Text.AsciiDoc.Attributes
+-- See https://docs.asciidoctor.org/asciidoc/latest/attributes/element-attributes/.
+module Text.AsciiDoc.ElementAttributes
   ( -- * AST types
-    Attribute (..),
+    ElementAttribute (..),
     PositionedAttribute (..),
 
     -- * Parsers
@@ -43,7 +44,7 @@ import qualified Data.Text as T
 import qualified Text.AsciiDoc.LineParsers as LP
 import qualified Text.Parsec as Parsec
 
-data Attribute
+data ElementAttribute
   = PositionalAttribute Text
   | NamedAttribute Text Text
   | -- | Special Asciidoctor syntax, all fields are optional and can appear in
@@ -59,7 +60,7 @@ data Attribute
     ShorthandSyntaxAttribute Text [Text] [Text] [Text]
   deriving (Eq, Show)
 
-newtype PositionedAttribute = PositionedAttribute (Int, Attribute)
+newtype PositionedAttribute = PositionedAttribute (Int, ElementAttribute)
 
 type AttributeParser = LP.LineParser
 
@@ -84,7 +85,7 @@ data Position
 -- different attributes, and this function considers it a non-quoted single
 -- attribute (i.e., quotes are part of the attribute and commas break the
 -- string).
-attributeListP :: AttributeParser (NonEmpty Attribute)
+attributeListP :: AttributeParser (NonEmpty ElementAttribute)
 attributeListP =
   (:|)
     <$> attributeP Start
@@ -94,7 +95,7 @@ attributeListP =
       Parsec.try (quotedP position '"' <* many Parsec.space <* endP)
         <|> Parsec.try (quotedP position '\'' <* many Parsec.space <* endP)
         <|> unquotedP position <* many Parsec.space <* endP
-    quotedP :: Position -> Char -> AttributeParser Attribute
+    quotedP :: Position -> Char -> AttributeParser ElementAttribute
     quotedP position quote = do
       v <- quotedValueP quote
       let shorthandOrError =
@@ -134,7 +135,7 @@ attributeListP =
             )
     unquotedValueP :: AttributeParser Text
     unquotedValueP = T.strip . T.pack <$> many (Parsec.satisfy (/= ','))
-    namedP :: AttributeParser Attribute
+    namedP :: AttributeParser ElementAttribute
     namedP =
       NamedAttribute
         <$> nameP <* Parsec.char '=' <* many Parsec.space <*> valueP
@@ -153,7 +154,7 @@ data CommaAcceptance
   | RejectCommas
   deriving (Eq, Show)
 
-attributeShorthandSyntaxP :: CommaAcceptance -> AttributeParser Attribute
+attributeShorthandSyntaxP :: CommaAcceptance -> AttributeParser ElementAttribute
 attributeShorthandSyntaxP commaAcceptance =
   wrap <$> someTill permutationP endP
   where

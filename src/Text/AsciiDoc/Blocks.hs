@@ -85,7 +85,7 @@ import Data.Maybe (catMaybes)
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Text.AsciiDoc.Attributes as Attributes
+import Text.AsciiDoc.ElementAttributes
 import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
 import Text.AsciiDoc.SpecialChars
@@ -205,9 +205,9 @@ instance ToMetadata (MetadataItem UnparsedInline) UnparsedInline where
   toMetadata (BlockTitle t) = mempty {metadataTitle = Just $ Last t}
   toMetadata (BlockAttributeList "") = mempty
   toMetadata (BlockAttributeList t) =
-    case Parsec.parse Attributes.attributeListP "" t of
+    case Parsec.parse attributeListP "" t of
       Right attributes ->
-        toMetadata $ Attributes.PositionedAttribute <$> NE.zip (1 :| [2 ..]) attributes
+        toMetadata $ PositionedAttribute <$> NE.zip (1 :| [2 ..]) attributes
       Left _ -> error "toMetadata @(MetadataItem UnparsedInline): parse should not fail"
 
 data BlockPrefixItem a
