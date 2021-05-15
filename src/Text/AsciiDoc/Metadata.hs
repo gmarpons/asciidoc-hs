@@ -25,7 +25,6 @@ module Text.AsciiDoc.Metadata
 where
 
 import qualified Data.IntMap as IntMap
-import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map as Map
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
@@ -112,7 +111,7 @@ instance ToMetadata PositionedAttribute UnparsedInline where
         metadataRoleNamedAttribute = Just $ Last $ T.words v
       }
   toMetadata (PositionedAttribute (_, NamedAttribute "title" v)) =
-    mempty {metadataTitle = Just $ Last $ TextLine v :| []}
+    mempty {metadataTitle = Just $ Last $ LineWithMarkup v :|| []}
   -- Any other named attribute
   toMetadata (PositionedAttribute (_, NamedAttribute k v)) =
     mempty {metadataNamedAttributes = Map.singleton k v}
