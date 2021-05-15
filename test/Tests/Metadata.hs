@@ -30,7 +30,7 @@ metadataUnitTests =
     [ testCase "block title" $ do
         p <- parseBlockPrefix [".Foo"]
         toMetadata p
-          `shouldBe` mempty {metadataTitle = Just (Last (TextLine "Foo" :| []))},
+          `shouldBe` mempty {metadataTitle = Just (Last (MarkupLine "Foo" :| []))},
       testCase "standalone block id" $ do
         p <- parseBlockPrefix ["[[Foo]]"]
         toMetadata p
@@ -96,7 +96,7 @@ metadataUnitTests =
               metadataIds = ["Foo", "Bar"],
               metadataRoles = ["Baz", "Foo"],
               metadataOptions = ["Foo", "", "Bar", "Baz"],
-              metadataTitle = Just (Last (TextLine "Baz" :| [])),
+              metadataTitle = Just (Last (MarkupLine "Baz" :| [])),
               metadataPositionalAttributes = IntMap.fromList [(2, "Foo"), (4, "Bar")],
               metadataNamedAttributes = Map.fromList [("Foo", "Baz")],
               metadataRoleNamedAttribute = Just (Last ["Baz", "Foo"])

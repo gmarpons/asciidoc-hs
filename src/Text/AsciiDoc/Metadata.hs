@@ -112,7 +112,7 @@ instance ToMetadata PositionedAttribute UnparsedInline where
         metadataRoleNamedAttribute = Just $ Last $ T.words v
       }
   toMetadata (PositionedAttribute (_, NamedAttribute "title" v)) =
-    mempty {metadataTitle = Just $ Last $ TextLine v :| []}
+    mempty {metadataTitle = Just $ Last $ MarkupLine v :| []}
   -- Any other named attribute
   toMetadata (PositionedAttribute (_, NamedAttribute k v)) =
     mempty {metadataNamedAttributes = Map.singleton k v}

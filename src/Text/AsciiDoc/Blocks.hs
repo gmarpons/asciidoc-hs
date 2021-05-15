@@ -364,7 +364,7 @@ attributeEntryP = attributeEntryP' <* many blankLineP
               <* LP.some space <*> LP.anyRemainder
           )
       Parsec.modifyState $ \st -> st {env = Map.insert k v (env st)}
-      pure $ AttributeEntry k $ Just (TextLine v :| [])
+      pure $ AttributeEntry k $ Just (MarkupLine v :| [])
 
 blockIdP :: Monad m => Parser m (BlockPrefixItem a)
 blockIdP = blockIdP' <* many blankLineP
@@ -382,7 +382,7 @@ blockTitleP :: Monad m => Parser m (BlockPrefixItem UnparsedInline)
 blockTitleP = blockTitleP' <* many blankLineP
   where
     blockTitleP' =
-      MetadataItem . BlockTitle . (:| []) . TextLine
+      MetadataItem . BlockTitle . (:| []) . MarkupLine
         <$> lineP (LP.char '.' *> (LP.satisfy (not . isSpace) <> LP.anyRemainder))
 
 -- | Parses a nestable delimited block.
@@ -427,7 +427,7 @@ sectionHeaderP prefix = do
   where
     sectionHeaderP' :: Monad m => Parser m (SectionHeader UnparsedInline)
     sectionHeaderP' =
-      (\(_c :* n, value) -> SectionHeader (TextLine value :| []) (n - 1))
+      (\(_c :* n, value) -> SectionHeader (MarkupLine value :| []) (n - 1))
         <$> lineP
           ( (,)
               <$> choice (LP.runOfN 1 [EqualsSignH]) <* some space
@@ -502,7 +502,7 @@ listP prefix =
               <?> "next blocks"
           )
       _ <- many blankLineP
-      pure $ Paragraph [] (TextLine firstLine :| nextLines) :| nextBlocks
+      pure $ Paragraph [] (MarkupLine firstLine :| nextLines) :| nextBlocks
     -- __Divergence DVB001 from Asciidoctor__. Before sublist:
     --
     --     * Full prefix (including attributes and block title) is allowed.
@@ -533,9 +533,9 @@ paragraphP prefix extraFinalizers =
   where
     paragraphP' =
       (:|) <$> firstP <*> many (paragraphContinuationP extraFinalizers <?> "paragraph continuation")
-    firstP :: Monad m => Parser m UnparsedLine
+    firstP :: Monad m => Parser m InputLine
     firstP =
-      TextLine
+      MarkupLine
         <$> lineNoneOfP
           -- Nestable
           ( (fmap fromMarker <$> LP.runOfN 4 [AsteriskD, EqualsSignD])
@@ -546,10 +546,10 @@ paragraphP prefix extraFinalizers =
           )
 
 -- Line comments (but not block comments!) can be contained in a paragraph.
-paragraphContinuationP :: Monad m => [LP.LineParser Text] -> Parser m UnparsedLine
+paragraphContinuationP :: Monad m => [LP.LineParser Text] -> Parser m InputLine
 paragraphContinuationP extraFinalizers =
   CommentLine <$> lineCommentP
-    <|> TextLine
+    <|> MarkupLine
       <$> lineNoneOfP
         ( fmap Parsec.try extraFinalizers
             -- Nestable

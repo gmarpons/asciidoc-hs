@@ -68,21 +68,21 @@ paragraphUnitTests =
           parseDocument
             [ "Foo"
             ]
-        p `shouldBe` [Paragraph [] (TextLine "Foo" :| [])],
+        p `shouldBe` [Paragraph [] (MarkupLine "Foo" :| [])],
       testCase "two lines paragraph" $ do
         p <-
           parseDocument
             [ "Foo",
               "Bar"
             ]
-        p `shouldBe` [Paragraph [] (TextLine "Foo" :| [TextLine "Bar"])],
+        p `shouldBe` [Paragraph [] (MarkupLine "Foo" :| [MarkupLine "Bar"])],
       testCase "paragraph followed by blank line" $ do
         p <-
           parseDocument
             [ "Foo",
               ""
             ]
-        p `shouldBe` [Paragraph [] (TextLine "Foo" :| [])],
+        p `shouldBe` [Paragraph [] (MarkupLine "Foo" :| [])],
       testCase "paragraph with indented following lines" $ do
         p <-
           parseDocument
@@ -90,7 +90,7 @@ paragraphUnitTests =
               "  Bar",
               " Baz"
             ]
-        p `shouldBe` [Paragraph [] (TextLine "Foo" :| [TextLine "  Bar", TextLine " Baz"])],
+        p `shouldBe` [Paragraph [] (MarkupLine "Foo" :| [MarkupLine "  Bar", MarkupLine " Baz"])],
       testCase "two paragraphs" $ do
         p <-
           parseDocument
@@ -99,8 +99,8 @@ paragraphUnitTests =
               "Bar"
             ]
         p
-          `shouldBe` [ Paragraph [] (TextLine "Foo" :| []),
-                       Paragraph [] (TextLine "Bar" :| [])
+          `shouldBe` [ Paragraph [] (MarkupLine "Foo" :| []),
+                       Paragraph [] (MarkupLine "Bar" :| [])
                      ],
       testCase "paragraph with block prefix" $ do
         p <-
@@ -112,11 +112,11 @@ paragraphUnitTests =
             ]
         p
           `shouldBe` [ Paragraph
-                         [ MetadataItem (BlockTitle (TextLine "Foo" :| [])),
+                         [ MetadataItem (BlockTitle (MarkupLine "Foo" :| [])),
                            Comment (LineCommentSequence (" Comment" :| [])),
                            MetadataItem (BlockAttributeList "Foo#Bar%Baz")
                          ]
-                         (TextLine "Foo" :| [])
+                         (MarkupLine "Foo" :| [])
                      ],
       testCase "paragraph with block prefix containing blank lines" $ do
         p <-
@@ -129,10 +129,10 @@ paragraphUnitTests =
             ]
         p
           `shouldBe` [ Paragraph
-                         [ MetadataItem (BlockTitle (TextLine "Foo" :| [])),
+                         [ MetadataItem (BlockTitle (MarkupLine "Foo" :| [])),
                            MetadataItem (BlockAttributeList "Foo#Bar%Baz")
                          ]
-                         (TextLine "Foo" :| [])
+                         (MarkupLine "Foo" :| [])
                      ],
       testCase "paragraph followed by dangling block prefix" $ do
         p <-
@@ -144,9 +144,9 @@ paragraphUnitTests =
         p
           `shouldBe` [ Paragraph
                          []
-                         (TextLine "Foo" :| []),
+                         (MarkupLine "Foo" :| []),
                        DanglingBlockPrefix
-                         [ MetadataItem (BlockTitle (TextLine "Foo" :| []))
+                         [ MetadataItem (BlockTitle (MarkupLine "Foo" :| []))
                          ]
                      ],
       testCase "paragraph with second line resembling block title" $ do
@@ -158,7 +158,7 @@ paragraphUnitTests =
         p
           `shouldBe` [ Paragraph
                          []
-                         (TextLine "Foo" :| [TextLine ".Bar"])
+                         (MarkupLine "Foo" :| [MarkupLine ".Bar"])
                      ]
     ]
 
@@ -174,7 +174,7 @@ sectionHeaderUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          []
-                         ( SectionHeader (TextLine "Foo" :| []) 0
+                         ( SectionHeader (MarkupLine "Foo" :| []) 0
                          )
                      ],
       testCase "level 1 section header" $ do
@@ -185,7 +185,7 @@ sectionHeaderUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          []
-                         ( SectionHeader (TextLine "Foo" :| []) 1
+                         ( SectionHeader (MarkupLine "Foo" :| []) 1
                          )
                      ],
       testCase "level 2 section header" $ do
@@ -196,7 +196,7 @@ sectionHeaderUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          []
-                         ( SectionHeader (TextLine "Foo" :| []) 2
+                         ( SectionHeader (MarkupLine "Foo" :| []) 2
                          )
                      ],
       testCase "section header with two words" $ do
@@ -207,7 +207,7 @@ sectionHeaderUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          []
-                         ( SectionHeader (TextLine "Foo bar" :| []) 0
+                         ( SectionHeader (MarkupLine "Foo bar" :| []) 0
                          )
                      ],
       testCase "section header beginning with space" $ do
@@ -218,7 +218,7 @@ sectionHeaderUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          []
-                         ( SectionHeader (TextLine "Foo" :| []) 0
+                         ( SectionHeader (MarkupLine "Foo" :| []) 0
                          )
                      ],
       testCase "section header followed by paragraph" $ do
@@ -230,9 +230,9 @@ sectionHeaderUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          []
-                         ( SectionHeader (TextLine "Foo" :| []) 0
+                         ( SectionHeader (MarkupLine "Foo" :| []) 0
                          ),
-                       Paragraph [] (TextLine "Bar" :| [])
+                       Paragraph [] (MarkupLine "Bar" :| [])
                      ],
       testCase "section header followed by blank line and paragraph" $ do
         p <-
@@ -244,9 +244,9 @@ sectionHeaderUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          []
-                         ( SectionHeader (TextLine "Foo" :| []) 0
+                         ( SectionHeader (MarkupLine "Foo" :| []) 0
                          ),
-                       Paragraph [] (TextLine "Bar" :| [])
+                       Paragraph [] (MarkupLine "Bar" :| [])
                      ],
       testCase "section header with block prefix" $ do
         p <-
@@ -256,8 +256,8 @@ sectionHeaderUnitTests =
             ]
         p
           `shouldBe` [ SectionHeaderBlock
-                         [MetadataItem (BlockTitle (TextLine "Foo" :| []))]
-                         ( SectionHeader (TextLine "Foo" :| []) 0
+                         [MetadataItem (BlockTitle (MarkupLine "Foo" :| []))]
+                         ( SectionHeader (MarkupLine "Foo" :| []) 0
                          )
                      ],
       testCase "section header followed by paragraph with block prefix" $ do
@@ -270,11 +270,11 @@ sectionHeaderUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          []
-                         ( SectionHeader (TextLine "Foo" :| []) 0
+                         ( SectionHeader (MarkupLine "Foo" :| []) 0
                          ),
                        Paragraph
-                         [MetadataItem (BlockTitle (TextLine "Bar" :| []))]
-                         (TextLine "Bar" :| [])
+                         [MetadataItem (BlockTitle (MarkupLine "Bar" :| []))]
+                         (MarkupLine "Bar" :| [])
                      ],
       testCase "discrete section header" $ do
         p <-
@@ -285,7 +285,7 @@ sectionHeaderUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          [MetadataItem (BlockAttributeList "discrete")]
-                         ( SectionHeader (TextLine "Foo" :| []) 0
+                         ( SectionHeader (MarkupLine "Foo" :| []) 0
                          )
                      ]
         let (SectionHeaderBlock prefix _) : _ = p
@@ -304,7 +304,7 @@ sectionHeaderUnitTests =
           parseDocument
             [ " = Foo"
             ]
-        p `shouldBe` [Paragraph [] (TextLine " = Foo" :| [])]
+        p `shouldBe` [Paragraph [] (MarkupLine " = Foo" :| [])]
     ]
 
 danglingBlockPrefixUnitTests :: TestTree
@@ -330,7 +330,7 @@ danglingBlockPrefixUnitTests =
         p
           `shouldBe` [ Paragraph
                          []
-                         (TextLine "Foo" :| []),
+                         (MarkupLine "Foo" :| []),
                        DanglingBlockPrefix [MetadataItem (BlockId "Foo")]
                      ],
       testCase "dangling block prefix at end of example block" $ do
@@ -346,7 +346,7 @@ danglingBlockPrefixUnitTests =
           `shouldBe` [ Nestable
                          Example
                          []
-                         [ Paragraph [] (TextLine "Foo" :| []),
+                         [ Paragraph [] (MarkupLine "Foo" :| []),
                            DanglingBlockPrefix [MetadataItem (BlockId "Bar")]
                          ]
                      ]
@@ -367,7 +367,7 @@ nestableUnitTests =
           `shouldBe` [ Nestable
                          Example
                          []
-                         [Paragraph [] (TextLine "Foo" :| [])]
+                         [Paragraph [] (MarkupLine "Foo" :| [])]
                      ],
       testCase "simple sidebar block" $ do
         p <-
@@ -380,7 +380,7 @@ nestableUnitTests =
           `shouldBe` [ Nestable
                          Sidebar
                          []
-                         [Paragraph [] (TextLine "Foo" :| [])]
+                         [Paragraph [] (MarkupLine "Foo" :| [])]
                      ],
       testCase "example block containing two paragraphs" $ do
         p <-
@@ -395,8 +395,8 @@ nestableUnitTests =
           `shouldBe` [ Nestable
                          Example
                          []
-                         [ Paragraph [] (TextLine "Foo" :| []),
-                           Paragraph [] (TextLine "Bar" :| [])
+                         [ Paragraph [] (MarkupLine "Foo" :| []),
+                           Paragraph [] (MarkupLine "Bar" :| [])
                          ]
                      ],
       testCase "example block with block title" $ do
@@ -410,8 +410,8 @@ nestableUnitTests =
         p
           `shouldBe` [ Nestable
                          Example
-                         [MetadataItem (BlockTitle (TextLine "Foo" :| []))]
-                         [Paragraph [] (TextLine "Bar" :| [])]
+                         [MetadataItem (BlockTitle (MarkupLine "Foo" :| []))]
+                         [Paragraph [] (MarkupLine "Bar" :| [])]
                      ],
       testCase "sidebar nested into example block" $ do
         p <-
@@ -429,7 +429,7 @@ nestableUnitTests =
                          [ Nestable
                              Sidebar
                              []
-                             [ Paragraph [] (TextLine "Bar" :| [])
+                             [ Paragraph [] (MarkupLine "Bar" :| [])
                              ]
                          ]
                      ],
@@ -447,11 +447,11 @@ nestableUnitTests =
           `shouldBe` [ Nestable
                          Example
                          []
-                         [ Paragraph [] (TextLine "Foo" :| []),
+                         [ Paragraph [] (MarkupLine "Foo" :| []),
                            Nestable
                              Sidebar
                              []
-                             [ Paragraph [] (TextLine "Bar" :| [])
+                             [ Paragraph [] (MarkupLine "Bar" :| [])
                              ]
                          ]
                      ],
@@ -472,7 +472,7 @@ nestableUnitTests =
                          [ Nestable
                              Sidebar
                              []
-                             [ Paragraph [] (TextLine "Bar" :| [])
+                             [ Paragraph [] (MarkupLine "Bar" :| [])
                              ]
                          ]
                      ],
@@ -490,11 +490,11 @@ nestableUnitTests =
           `shouldBe` [ Nestable
                          Example
                          []
-                         [ Paragraph [] (TextLine "Foo" :| []),
+                         [ Paragraph [] (MarkupLine "Foo" :| []),
                            Nestable
                              Example
                              []
-                             [ Paragraph [] (TextLine "Bar" :| [])
+                             [ Paragraph [] (MarkupLine "Bar" :| [])
                              ]
                          ]
                      ],
@@ -511,11 +511,11 @@ nestableUnitTests =
           `shouldBe` [ Nestable
                          Example
                          []
-                         [ Paragraph [] (TextLine "Foo" :| []),
+                         [ Paragraph [] (MarkupLine "Foo" :| []),
                            Nestable
                              Sidebar
                              []
-                             [ Paragraph [] (TextLine "Bar" :| [])
+                             [ Paragraph [] (MarkupLine "Bar" :| [])
                              ]
                          ]
                      ],
@@ -532,11 +532,11 @@ nestableUnitTests =
           `shouldBe` [ Nestable
                          Example
                          []
-                         [ Paragraph [] (TextLine "Foo" :| []),
+                         [ Paragraph [] (MarkupLine "Foo" :| []),
                            Nestable
                              Example
                              []
-                             [ Paragraph [] (TextLine "Bar" :| [])
+                             [ Paragraph [] (MarkupLine "Bar" :| [])
                              ]
                          ]
                      ]
@@ -557,9 +557,9 @@ unorderedListUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( (Paragraph [] (TextLine "Foo" :| []) :| [])
-                             :| [ Paragraph [] (TextLine "Bar" :| []) :| [],
-                                  Paragraph [] (TextLine "Baz" :| []) :| []
+                         ( (Paragraph [] (MarkupLine "Foo" :| []) :| [])
+                             :| [ Paragraph [] (MarkupLine "Bar" :| []) :| [],
+                                  Paragraph [] (MarkupLine "Baz" :| []) :| []
                                 ]
                          )
                      ],
@@ -574,9 +574,9 @@ unorderedListUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( (Paragraph [] (TextLine "Foo" :| []) :| [])
-                             :| [ Paragraph [] (TextLine "Bar" :| []) :| [],
-                                  Paragraph [] (TextLine "Baz" :| []) :| []
+                         ( (Paragraph [] (MarkupLine "Foo" :| []) :| [])
+                             :| [ Paragraph [] (MarkupLine "Bar" :| []) :| [],
+                                  Paragraph [] (MarkupLine "Baz" :| []) :| []
                                 ]
                          )
                      ],
@@ -591,9 +591,9 @@ unorderedListUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( (Paragraph [] (TextLine "Foo" :| []) :| [])
-                             :| [ Paragraph [] (TextLine "Bar" :| []) :| [],
-                                  Paragraph [] (TextLine "Baz" :| []) :| []
+                         ( (Paragraph [] (MarkupLine "Foo" :| []) :| [])
+                             :| [ Paragraph [] (MarkupLine "Bar" :| []) :| [],
+                                  Paragraph [] (MarkupLine "Baz" :| []) :| []
                                 ]
                          )
                      ],
@@ -606,12 +606,12 @@ unorderedListUnitTests =
               "* Baz"
             ]
         p
-          `shouldBe` [ Paragraph [] (TextLine "Foo" :| []),
+          `shouldBe` [ Paragraph [] (MarkupLine "Foo" :| []),
                        List
                          (Unordered Nothing)
                          []
-                         ( (Paragraph [] (TextLine "Bar" :| []) :| [])
-                             :| [ Paragraph [] (TextLine "Baz" :| []) :| []
+                         ( (Paragraph [] (MarkupLine "Bar" :| []) :| [])
+                             :| [ Paragraph [] (MarkupLine "Baz" :| []) :| []
                                 ]
                          )
                      ],
@@ -629,9 +629,9 @@ unorderedListUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( (Paragraph [] (TextLine "Foo" :| []) :| [])
-                             :| [ Paragraph [] (TextLine "Bar" :| []) :| [],
-                                  Paragraph [] (TextLine "Baz" :| []) :| []
+                         ( (Paragraph [] (MarkupLine "Foo" :| []) :| [])
+                             :| [ Paragraph [] (MarkupLine "Bar" :| []) :| [],
+                                  Paragraph [] (MarkupLine "Baz" :| []) :| []
                                 ]
                          )
                      ],
@@ -647,8 +647,8 @@ unorderedListUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( (Paragraph [] (TextLine "Foo" :| [TextLine "Bar"]) :| [])
-                             :| [Paragraph [] (TextLine "Baz" :| [TextLine "  Qux"]) :| []]
+                         ( (Paragraph [] (MarkupLine "Foo" :| [MarkupLine "Bar"]) :| [])
+                             :| [Paragraph [] (MarkupLine "Baz" :| [MarkupLine "  Qux"]) :| []]
                          )
                      ],
       testCase "unordered list item with literal second paragraph" $ do
@@ -662,18 +662,18 @@ unorderedListUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                -- TODO. Add when indented literal paragraphs are
                                -- implemented:
                                --
-                               --  :| [QUOTED [] (TextLine "Bar" :| [])]
+                               --  :| [QUOTED [] (MarkupLine "Bar" :| [])]
                                :| []
                            )
                              :| []
                          ),
                        -- TODO. Remove when indented literal paragraphs are
                        -- implemented:
-                       Paragraph [] (TextLine " Bar" :| [])
+                       Paragraph [] (MarkupLine " Bar" :| [])
                      ],
       testCase "two unordered lists separated by a paragraph" $ do
         p <-
@@ -689,13 +689,13 @@ unorderedListUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ((Paragraph [] (TextLine "Foo" :| []) :| []) :| []),
-                       Paragraph [] (TextLine "Bar" :| []),
+                         ((Paragraph [] (MarkupLine "Foo" :| []) :| []) :| []),
+                       Paragraph [] (MarkupLine "Bar" :| []),
                        List
                          (Unordered Nothing)
                          []
-                         ( (Paragraph [] (TextLine "Baz" :| []) :| [])
-                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                         ( (Paragraph [] (MarkupLine "Baz" :| []) :| [])
+                             :| [Paragraph [] (MarkupLine "Qux" :| []) :| []]
                          )
                      ],
       testCase "unordered list followed up by consecutive example block" $ do
@@ -710,11 +710,11 @@ unorderedListUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ((Paragraph [] (TextLine "Foo" :| []) :| []) :| []),
+                         ((Paragraph [] (MarkupLine "Foo" :| []) :| []) :| []),
                        Nestable
                          Example
                          []
-                         [Paragraph [] (TextLine "Bar" :| [])]
+                         [Paragraph [] (MarkupLine "Bar" :| [])]
                      ]
     ]
 
@@ -734,16 +734,16 @@ nestedListsUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       []
-                                      ( (Paragraph [] (TextLine "Bar" :| []) :| [])
-                                          :| [Paragraph [] (TextLine "Baz" :| []) :| []]
+                                      ( (Paragraph [] (MarkupLine "Bar" :| []) :| [])
+                                          :| [Paragraph [] (MarkupLine "Baz" :| []) :| []]
                                       )
                                   ]
                            )
-                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                             :| [Paragraph [] (MarkupLine "Qux" :| []) :| []]
                          )
                      ],
       testCase "nested unordered lists using increasing number of '*' (asterisk)" $ do
@@ -758,22 +758,22 @@ nestedListsUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       []
-                                      ( ( Paragraph [] (TextLine "Bar" :| [])
+                                      ( ( Paragraph [] (MarkupLine "Bar" :| [])
                                             :| [ List
                                                    (Unordered Nothing)
                                                    []
-                                                   ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                                                   ((Paragraph [] (MarkupLine "Baz" :| []) :| []) :| [])
                                                ]
                                         )
                                           :| []
                                       )
                                   ]
                            )
-                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                             :| [Paragraph [] (MarkupLine "Qux" :| []) :| []]
                          )
                      ],
       testCase "nested unordered lists with blank lines interspersed" $ do
@@ -791,22 +791,22 @@ nestedListsUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       []
-                                      ( ( Paragraph [] (TextLine "Bar" :| [])
+                                      ( ( Paragraph [] (MarkupLine "Bar" :| [])
                                             :| [ List
                                                    (Unordered Nothing)
                                                    []
-                                                   ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                                                   ((Paragraph [] (MarkupLine "Baz" :| []) :| []) :| [])
                                                ]
                                         )
                                           :| []
                                       )
                                   ]
                            )
-                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                             :| [Paragraph [] (MarkupLine "Qux" :| []) :| []]
                          )
                      ],
       testCase "nested unordered lists using unordered number of '*' (asterisk)" $ do
@@ -821,22 +821,22 @@ nestedListsUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       []
-                                      ( ( Paragraph [] (TextLine "Bar" :| [])
+                                      ( ( Paragraph [] (MarkupLine "Bar" :| [])
                                             :| [ List
                                                    (Unordered Nothing)
                                                    []
-                                                   ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                                                   ((Paragraph [] (MarkupLine "Baz" :| []) :| []) :| [])
                                                ]
                                         )
                                           :| []
                                       )
                                   ]
                            )
-                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                             :| [Paragraph [] (MarkupLine "Qux" :| []) :| []]
                          )
                      ],
       testCase "nested unordered list with multi-line paragraph" $ do
@@ -851,16 +851,16 @@ nestedListsUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       []
-                                      ( (Paragraph [] (TextLine "Bar" :| [TextLine "Baz"]) :| [])
+                                      ( (Paragraph [] (MarkupLine "Bar" :| [MarkupLine "Baz"]) :| [])
                                           :| []
                                       )
                                   ]
                            )
-                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                             :| [Paragraph [] (MarkupLine "Qux" :| []) :| []]
                          )
                      ],
       testCase "(DVB001) nested unordered list with block prefixes" $ do
@@ -880,15 +880,15 @@ nestedListsUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          [ MetadataItem (BlockAttributeList ".red"),
-                           MetadataItem (BlockTitle (TextLine "FooFoo" :| []))
+                           MetadataItem (BlockTitle (MarkupLine "FooFoo" :| []))
                          ]
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       [ MetadataItem (BlockAttributeList ".blue"),
-                                        MetadataItem (BlockTitle (TextLine "BarBar" :| []))
+                                        MetadataItem (BlockTitle (MarkupLine "BarBar" :| []))
                                       ]
-                                      ( (Paragraph [] (TextLine "Bar" :| []) :| [])
+                                      ( (Paragraph [] (MarkupLine "Bar" :| []) :| [])
                                           :| []
                                       )
                                   ]
@@ -898,9 +898,9 @@ nestedListsUnitTests =
                        List
                          (Unordered Nothing)
                          [ MetadataItem (BlockAttributeList ".green"),
-                           MetadataItem (BlockTitle (TextLine "BazBaz" :| []))
+                           MetadataItem (BlockTitle (MarkupLine "BazBaz" :| []))
                          ]
-                         ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                         ((Paragraph [] (MarkupLine "Baz" :| []) :| []) :| [])
                      ],
       -- Identical result to the previous test case.
       testCase "(DVB001) nested unordered list with block prefixes and some blank lines" $ do
@@ -923,15 +923,15 @@ nestedListsUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          [ MetadataItem (BlockAttributeList ".red"),
-                           MetadataItem (BlockTitle (TextLine "FooFoo" :| []))
+                           MetadataItem (BlockTitle (MarkupLine "FooFoo" :| []))
                          ]
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       [ MetadataItem (BlockAttributeList ".blue"),
-                                        MetadataItem (BlockTitle (TextLine "BarBar" :| []))
+                                        MetadataItem (BlockTitle (MarkupLine "BarBar" :| []))
                                       ]
-                                      ( (Paragraph [] (TextLine "Bar" :| []) :| [])
+                                      ( (Paragraph [] (MarkupLine "Bar" :| []) :| [])
                                           :| []
                                       )
                                   ]
@@ -941,9 +941,9 @@ nestedListsUnitTests =
                        List
                          (Unordered Nothing)
                          [ MetadataItem (BlockAttributeList ".green"),
-                           MetadataItem (BlockTitle (TextLine "BazBaz" :| []))
+                           MetadataItem (BlockTitle (MarkupLine "BazBaz" :| []))
                          ]
-                         ((Paragraph [] (TextLine "Baz" :| []) :| []) :| [])
+                         ((Paragraph [] (MarkupLine "Baz" :| []) :| []) :| [])
                      ]
     ]
 
@@ -963,10 +963,10 @@ listContinuationUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
-                               :| [Paragraph [] (TextLine "Bar" :| [])]
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
+                               :| [Paragraph [] (MarkupLine "Bar" :| [])]
                            )
-                             :| [Paragraph [] (TextLine "Baz" :| []) :| []]
+                             :| [Paragraph [] (MarkupLine "Baz" :| []) :| []]
                          )
                      ],
       testCase "two list continuations (paragraph), followed by another list item" $ do
@@ -983,12 +983,12 @@ listContinuationUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
-                               :| [ Paragraph [] (TextLine "Bar" :| []),
-                                    Paragraph [] (TextLine "Baz" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
+                               :| [ Paragraph [] (MarkupLine "Bar" :| []),
+                                    Paragraph [] (MarkupLine "Baz" :| [])
                                   ]
                            )
-                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                             :| [Paragraph [] (MarkupLine "Qux" :| []) :| []]
                          )
                      ],
       testCase "list continuation (paragraph) with a block prefix" $ do
@@ -1003,10 +1003,10 @@ listContinuationUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ Paragraph
                                       [MetadataItem (BlockAttributeList ".red")]
-                                      (TextLine "Bar" :| [])
+                                      (MarkupLine "Bar" :| [])
                                   ]
                            )
                              :| []
@@ -1026,10 +1026,10 @@ listContinuationUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
-                               :| [Nestable Example [] [Paragraph [] (TextLine "Bar" :| [])]]
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
+                               :| [Nestable Example [] [Paragraph [] (MarkupLine "Bar" :| [])]]
                            )
-                             :| [Paragraph [] (TextLine "Baz" :| []) :| []]
+                             :| [Paragraph [] (MarkupLine "Baz" :| []) :| []]
                          )
                      ],
       testCase "list continuation into a nested unordered list" $ do
@@ -1045,18 +1045,18 @@ listContinuationUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       []
-                                      ( ( Paragraph [] (TextLine "Bar" :| [])
-                                            :| [Paragraph [] (TextLine "Baz" :| [])]
+                                      ( ( Paragraph [] (MarkupLine "Bar" :| [])
+                                            :| [Paragraph [] (MarkupLine "Baz" :| [])]
                                         )
                                           :| []
                                       )
                                   ]
                            )
-                             :| [Paragraph [] (TextLine "Qux" :| []) :| []]
+                             :| [Paragraph [] (MarkupLine "Qux" :| []) :| []]
                          )
                      ],
       testCase "dangling list continuation marker in outermost list" $ do
@@ -1072,8 +1072,8 @@ listContinuationUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ((Paragraph [] (TextLine "Foo" :| []) :| []) :| []),
-                       Paragraph [] (TextLine "Bar" :| [])
+                         ((Paragraph [] (MarkupLine "Foo" :| []) :| []) :| []),
+                       Paragraph [] (MarkupLine "Bar" :| [])
                      ],
       testCase "dangling list continuation marker into a nested unordered list" $ do
         p <-
@@ -1089,16 +1089,16 @@ listContinuationUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       []
-                                      ((Paragraph [] (TextLine "Bar" :| []) :| []) :| [])
+                                      ((Paragraph [] (MarkupLine "Bar" :| []) :| []) :| [])
                                   ]
                            )
                              :| []
                          ),
-                       Paragraph [] (TextLine "Baz" :| [])
+                       Paragraph [] (MarkupLine "Baz" :| [])
                      ],
       testCase "(DVB002) broken list continuation attempt in outermost list" $ do
         p <-
@@ -1112,8 +1112,8 @@ listContinuationUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ((Paragraph [] (TextLine "Foo" :| []) :| []) :| []),
-                       Paragraph [] (TextLine "+" :| [TextLine "Bar"])
+                         ((Paragraph [] (MarkupLine "Foo" :| []) :| []) :| []),
+                       Paragraph [] (MarkupLine "+" :| [MarkupLine "Bar"])
                      ],
       testCase "(DVB002) broken list continuation attempt in nested list" $ do
         p <-
@@ -1128,16 +1128,16 @@ listContinuationUnitTests =
           `shouldBe` [ List
                          (Unordered Nothing)
                          []
-                         ( ( Paragraph [] (TextLine "Foo" :| [])
+                         ( ( Paragraph [] (MarkupLine "Foo" :| [])
                                :| [ List
                                       (Unordered Nothing)
                                       []
-                                      ((Paragraph [] (TextLine "Bar" :| []) :| []) :| [])
+                                      ((Paragraph [] (MarkupLine "Bar" :| []) :| []) :| [])
                                   ]
                            )
                              :| []
                          ),
-                       Paragraph [] (TextLine "+" :| [TextLine "Baz"])
+                       Paragraph [] (MarkupLine "+" :| [MarkupLine "Baz"])
                      ],
       testCase "line break that resembles list continuation" $ do
         p <-
@@ -1154,9 +1154,9 @@ listContinuationUnitTests =
                          -- implemented.
                          ( ( Paragraph
                                []
-                               ( TextLine "Foo"
-                                   :| [ TextLine " +",
-                                        TextLine "Bar"
+                               ( MarkupLine "Foo"
+                                   :| [ MarkupLine " +",
+                                        MarkupLine "Bar"
                                       ]
                                )
                                :| []
@@ -1200,7 +1200,7 @@ commentUnitTests =
         p
           `shouldBe` [ Paragraph
                          [Comment (BlockComment ["Foo"])]
-                         (TextLine "Bar" :| [])
+                         (MarkupLine "Bar" :| [])
                      ],
       testCase "block comment before paragraph, with redundant space" $ do
         p <-
@@ -1213,7 +1213,7 @@ commentUnitTests =
         p
           `shouldBe` [ Paragraph
                          [Comment (BlockComment ["Foo"])]
-                         (TextLine "Bar" :| [])
+                         (MarkupLine "Bar" :| [])
                      ],
       testCase "block comment before paragraph, separated by blank line" $ do
         p <-
@@ -1227,7 +1227,7 @@ commentUnitTests =
         p
           `shouldBe` [ Paragraph
                          [Comment (BlockComment ["Foo"])]
-                         (TextLine "Bar" :| [])
+                         (MarkupLine "Bar" :| [])
                      ],
       testCase "empty block comment before paragraph" $ do
         p <-
@@ -1239,7 +1239,7 @@ commentUnitTests =
         p
           `shouldBe` [ Paragraph
                          [Comment (BlockComment [])]
-                         (TextLine "Foo" :| [])
+                         (MarkupLine "Foo" :| [])
                      ],
       testCase "empty line comment before paragraph" $ do
         p <-
@@ -1250,7 +1250,7 @@ commentUnitTests =
         p
           `shouldBe` [ Paragraph
                          [Comment (LineCommentSequence ("" :| []))]
-                         (TextLine "Foo" :| [])
+                         (MarkupLine "Foo" :| [])
                      ],
       testCase "block comment with multiple pseudo-paragraphs" $ do
         p <-
@@ -1265,7 +1265,7 @@ commentUnitTests =
         p
           `shouldBe` [ Paragraph
                          [Comment (BlockComment ["Foo", "", "Bar"])]
-                         (TextLine "Baz" :| [])
+                         (MarkupLine "Baz" :| [])
                      ],
       testCase "line comment sequence before paragraph" $ do
         p <-
@@ -1277,7 +1277,7 @@ commentUnitTests =
         p
           `shouldBe` [ Paragraph
                          [Comment (LineCommentSequence ("Foo" :| [" Bar"]))]
-                         (TextLine "Baz" :| [])
+                         (MarkupLine "Baz" :| [])
                      ],
       testCase "line comment inside paragraph" $ do
         p <-
@@ -1289,7 +1289,7 @@ commentUnitTests =
         p
           `shouldBe` [ Paragraph
                          []
-                         (TextLine "Foo" :| [CommentLine " Bar", TextLine "Baz"])
+                         (MarkupLine "Foo" :| [CommentLine " Bar", MarkupLine "Baz"])
                      ],
       testCase "line comment inside paragraph and after paragraph" $ do
         p <-
@@ -1302,9 +1302,9 @@ commentUnitTests =
         p
           `shouldBe` [ Paragraph
                          []
-                         ( TextLine "Foo"
+                         ( MarkupLine "Foo"
                              :| [ CommentLine " Bar",
-                                  TextLine "Baz",
+                                  MarkupLine "Baz",
                                   CommentLine "Qux"
                                 ]
                          )
@@ -1319,7 +1319,7 @@ commentUnitTests =
         p
           `shouldBe` [ SectionHeaderBlock
                          [Comment (LineCommentSequence ("Foo" :| [" Bar"]))]
-                         (SectionHeader (TextLine "Baz" :| []) 1)
+                         (SectionHeader (MarkupLine "Baz" :| []) 1)
                      ],
       testCase "block comment followed by line comment sequence" $ do
         p <-
@@ -1336,7 +1336,7 @@ commentUnitTests =
                          [ Comment (BlockComment ["Foo", ""]),
                            Comment (LineCommentSequence ("Bar" :| []))
                          ]
-                         (TextLine "Baz" :| [])
+                         (MarkupLine "Baz" :| [])
                      ],
       testCase "line comment sequence followed by block comment" $ do
         p <-
@@ -1353,7 +1353,7 @@ commentUnitTests =
                          [ Comment (LineCommentSequence (" Foo" :| ["Bar"])),
                            Comment (BlockComment ["Baz"])
                          ]
-                         (TextLine "Qux" :| [])
+                         (MarkupLine "Qux" :| [])
                      ],
       testCase "block comment with more than four '/' (slash)" $ do
         p <-
@@ -1370,7 +1370,7 @@ commentUnitTests =
           `shouldBe` [ Paragraph
                          [ Comment (BlockComment ["Foo", "////", "Bar", "////"])
                          ]
-                         (TextLine "Baz" :| [])
+                         (MarkupLine "Baz" :| [])
                      ],
       testCase "dangling non-closed block comment" $ do
         p <-
@@ -1392,7 +1392,7 @@ commentUnitTests =
               "////"
             ]
         p
-          `shouldBe` [ Paragraph [] (TextLine "///" :| [TextLine "Foo"]),
+          `shouldBe` [ Paragraph [] (MarkupLine "///" :| [MarkupLine "Foo"]),
                        DanglingBlockPrefix [Comment (BlockComment [])]
                      ],
       testCase "bad line comment, with three '/' (slashes)" $ do
@@ -1402,7 +1402,7 @@ commentUnitTests =
               "Bar"
             ]
         p
-          `shouldBe` [Paragraph [] (TextLine "///Foo" :| [TextLine "Bar"])],
+          `shouldBe` [Paragraph [] (MarkupLine "///Foo" :| [MarkupLine "Bar"])],
       testCase "bad block comment opening, preceded by space" $ do
         p <-
           parseDocument
@@ -1411,7 +1411,7 @@ commentUnitTests =
               "////"
             ]
         p
-          `shouldBe` [ Paragraph [] (TextLine " ////" :| [TextLine "Foo"]),
+          `shouldBe` [ Paragraph [] (MarkupLine " ////" :| [MarkupLine "Foo"]),
                        DanglingBlockPrefix [Comment (BlockComment [])]
                      ],
       testCase "bad line comment opening, preceded by space" $ do
@@ -1421,5 +1421,5 @@ commentUnitTests =
               "Bar"
             ]
         p
-          `shouldBe` [Paragraph [] (TextLine " //Foo" :| [TextLine "Bar"])]
+          `shouldBe` [Paragraph [] (MarkupLine " //Foo" :| [MarkupLine "Bar"])]
     ]
