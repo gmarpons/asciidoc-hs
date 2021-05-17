@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Inlines
@@ -29,8 +31,8 @@ module Text.AsciiDoc.Inlines
   ( -- * AST types
     Inline (..),
     Style (..),
-    ParameterList (..),
-    defaultParameterList,
+    InlineAttributeList (..),
+    defaultAttributeList,
 
     -- * Parsers
     inlinesP,
@@ -43,6 +45,7 @@ module Text.AsciiDoc.Inlines
 where
 
 import Control.Monad (when)
+import Control.Monad.Combinators (someTill)
 import Control.Monad.Combinators hiding
   ( endBy1,
     sepBy1,
@@ -57,7 +60,10 @@ import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text as T
+import Text.AsciiDoc.ElementAttributes
+import Text.AsciiDoc.Metadata
 import Text.AsciiDoc.SpecialChars
+import Text.AsciiDoc.UnparsedInline
 import Text.Parsec ((<?>))
 import qualified Text.Parsec as Parsec
   ( ParsecT,
@@ -67,6 +73,7 @@ import qualified Text.Parsec as Parsec
     label,
     lookAhead,
     notFollowedBy,
+    parse,
     putState,
     try,
   )
@@ -130,7 +137,7 @@ data Inline
   | InlineSeq (NonEmpty Inline)
   | Newline Text
   | Space Text
-  | StyledText Style (ParameterList Text) Text (NonEmpty Inline) Text
+  | StyledText Style InlineAttributeList Text (NonEmpty Inline) Text
   | Symbol Text
   deriving (Eq, Show, Typeable, Data)
 
@@ -165,7 +172,7 @@ inlinesP =
 unconstrainedP :: Monad m => Parser m Inline
 unconstrainedP = Parsec.try $ do
   Parsec.label (pure ()) "U"
-  ps <- option defaultParameterList parameterListP
+  ps <- option defaultAttributeList inlineAttributeListP
   phiP
   openMark <- openP ["##", "**", "__", "``"]
   is <- inlinesInUnconstrainedP
@@ -187,7 +194,7 @@ unconstrainedP = Parsec.try $ do
 constrainedP :: Monad m => Parser m Inline
 constrainedP = Parsec.try $ do
   Parsec.label (pure ()) "C"
-  ps <- option defaultParameterList parameterListP
+  ps <- option defaultAttributeList inlineAttributeListP
   varphiP
   openMark <- openP ["#", "*", "_", "`"]
   is <- inlinesInConstrainedP
@@ -432,16 +439,37 @@ alphaNumP =
     wordCharP = Parsec.satisfy $ \c ->
       isAlphaNum c
 
--- Parser for (inline) parameter (aka attribute) lists  ------------------------
+-- Parser for element attribute (aka parameter) lists  ------------------------
 
-newtype ParameterList a = ParameterList a
+newtype InlineAttributeList = InlineAttributeList Text
   deriving (Eq, Show, Data, Typeable)
 
-defaultParameterList :: ParameterList Text
-defaultParameterList = ParameterList ""
+-- | This instance accepts the same kind of attributes than the instance for
+-- 'Text.AsciiDoc.Blocks.BlockPrefixItem's, including the shorthand syntax.
+--
+-- Attributes @title@ and @opts@/@options@ have currently no meaning for
+-- inlines, but they are still parsed and stored in the resulting 'Metadata'
+-- value.
+--
+-- __Divergence from Asciidoctor__: The aforementioned behavior implies that
+-- some inputs produce different results than Asciidoctor.
+-- Asciidoctor only honours @role@ and @id@ attributes and messes up the rest.
+instance ToMetadata InlineAttributeList UnparsedInline where
+  toMetadata (InlineAttributeList "") = mempty
+  toMetadata (InlineAttributeList t) =
+    case Parsec.parse attributeListP "" t of
+      Right attributes ->
+        toMetadata $ PositionedAttribute <$> NE.zip (1 :| [2 ..]) attributes
+      Left _ -> error "toMetadata @InlineAttributeList: parse should not fail"
 
-parameterListP :: Monad m => Parser m (ParameterList Text)
-parameterListP =
+defaultAttributeList :: InlineAttributeList
+defaultAttributeList = InlineAttributeList ""
+
+-- | Accepts an square-bracket-enclosed string with no restrictions on the
+-- characters in between, provided that there is at least one such character.
+
+inlineAttributeListP :: Monad m => Parser m InlineAttributeList
+inlineAttributeListP =
   flip Parsec.label "P" $
-    ParameterList . T.pack
-      <$ Parsec.char '[' <*> manyTill Parsec.anyChar (Parsec.char ']')
+    InlineAttributeList . T.pack
+      <$ Parsec.char '[' <*> someTill Parsec.anyChar (Parsec.char ']')

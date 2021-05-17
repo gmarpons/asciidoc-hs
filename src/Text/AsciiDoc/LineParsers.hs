@@ -96,10 +96,15 @@ blockId =
         || (ord c >= 768 && ord c <= 879)
 
 -- | Accepts an square-bracket-enclosed string with almost no restrictions on
--- the characters in between. Only the very first character needs to be one of
--- the following list: @[\',', \'.', \'#', \'%', \'_', \'º', \'ª', \'\'', \'"']@.
+-- the characters in between. Only the very first character needs to be alphanum
+-- or one of the following list: @[\',', \'.', \'#', \'%', \'_', \'º', \'ª',
+-- \'\'', \'"']@. This list has been discovered empirically (testing).
 --
--- The string can be empty.
+-- The input can be empty.
+--
+-- The input can contain newline characters, even if this function is usually
+-- called over one line strings (Asciidoctor doesn't support multi-line block
+-- attribute lists).
 blockAttributeList :: LineParser Text
 blockAttributeList = do
   t <- string "[" *> anyRemainder
@@ -108,7 +113,7 @@ blockAttributeList = do
     -- No chars between square brackets: empty attribute list
     (True, Nothing, Just (_, ']')) -> pure ""
     -- There are some chars between square brackets: accept them if starting
-    -- char belongs to a restricted group of characters, discovered empirically.
+    -- char belongs to a restricted group of characters.
     (True, Just (s, _), Just (t'', ']')) | isStartChar s -> pure t''
     -- Fail otherwise (no square bracket at the end, or no correct first char).
     _ -> PC.empty

@@ -30,8 +30,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Text.AsciiDoc.Blocks hiding (Parser)
 import Text.AsciiDoc.Inlines
-import Text.AsciiDoc.Metadata (ToMetadata (toMetadata))
+import Text.AsciiDoc.Metadata
 import Text.AsciiDoc.UnparsedInline
+import Text.Pandoc.Builder (Attr)
 import qualified Text.Pandoc.Builder as Pandoc
 import Text.Pandoc.Definition (Pandoc)
 import qualified Text.Parsec as Parsec
@@ -48,6 +49,8 @@ parseInline x =
     Left parseError -> error $ "parseInlines: " <> show parseError
   where
     fromUnparsedInline :: UnparsedInline -> Text
+    -- TODO. Check what line finalizers T.unilines considers, and update the
+    -- following definition to be congruent with Text.AsciiDoc.Inlines.newlineP.
     fromUnparsedInline = T.unlines . fmap toText . NE.toList
     toText :: InputLine -> Text
     toText = \case
@@ -84,28 +87,43 @@ convertInline = \case
   AlphaNum t -> Pandoc.str t
   EndOfInline _ -> mempty
   Newline t -> Pandoc.str t
-  Space t -> Pandoc.str t -- Pandoc.space
+  Space _ -> Pandoc.space
   InlineSeq inlines -> {- Pandoc.spanWith ("", [], []) $ -} foldMap convertInline inlines
-  StyledText Bold (ParameterList parameters) _ inlines _
-    | T.null parameters ->
+  StyledText Bold (InlineAttributeList t) _ inlines _
+    | T.null t ->
       Pandoc.strong $ foldMap convertInline inlines
-  StyledText Bold (ParameterList parameters) _ inlines _ ->
-    let attributes = ("", [], [("raw-attributes", parameters)])
-     in Pandoc.spanWith attributes $ Pandoc.strong $ foldMap convertInline inlines
-  StyledText Custom (ParameterList parameters) _ inlines _ ->
-    let attributes = ("", ["custom"], [("raw-attributes", parameters)])
-     in Pandoc.spanWith attributes $ foldMap convertInline inlines
-  StyledText Italic (ParameterList parameters) _ inlines _
-    | T.null parameters ->
+  -- NOTE. Asciidoctor creates a single <strong> element with attributes in this
+  -- case, but Pandoc AST doesn't support attributes in <strong> nodes. The
+  -- following is semantically equivalent:
+  StyledText Bold as _ inlines _ ->
+    Pandoc.spanWith (toAttr $ toMetadata as) $
+      Pandoc.strong $ foldMap convertInline inlines
+  -- NOTE. Pandoc's AST don't support "mark" elements, but the HTML writer
+  -- produces a <mark> element if the class "mark" is added to the span.
+  --
+  -- As Asciidoctor, we only produce a <mark> element for "empty" custom spans.
+  StyledText Custom as@(InlineAttributeList t) _ inlines _ ->
+    Pandoc.spanWith
+      ( toAttr $
+          if T.null t
+            then mempty {metadataRoles = ["mark"]} <> toMetadata as
+            else toMetadata as
+      )
+      $ foldMap convertInline inlines
+  StyledText Italic (InlineAttributeList t) _ inlines _
+    | T.null t ->
       Pandoc.emph $ foldMap convertInline inlines
-  StyledText Italic (ParameterList parameters) _ inlines _ ->
-    let attributes = ("", [], [("raw-attributes", parameters)])
-     in Pandoc.spanWith attributes $ Pandoc.emph $ foldMap convertInline inlines
+  -- NOTE. Asciidoctor creates a single <emph> element with attributes in this
+  -- case, but Pandoc AST doesn't support attributes in <emph> nodes. The
+  -- following is semantically equivalent:
+  StyledText Italic as _ inlines _ ->
+    Pandoc.spanWith (toAttr $ toMetadata as) $
+      Pandoc.emph $ foldMap convertInline inlines
   -- NOTE. Pandoc's Code nodes do not support nested markup. It's a pity because
   -- HTML <code> element does. Among the three following solutions, we choose 1)
   -- because it's simpler than 2) and produces cleaner (probably more robust for
   -- backends that are not HTML) Pandoc output, and with 3) a lot of markup is
-  -- potentially lost:
+  -- potentially lost. Also, it's congruent with the treatment of <mark> above:
   --
   -- 1) Convert Monospace into a span, do not call Pandoc.code, and add a
   --    "monospace" class. I.e., do not generate <code> element in HTML and
@@ -116,7 +134,19 @@ convertInline = \case
   --    that need it.
   --
   -- 3) Convert inlines into a Text with no markup applied.
-  StyledText Monospace (ParameterList parameters) _ inlines _ ->
-    let attributes = ("", ["monospace"], [("raw-attributes", parameters)])
-     in Pandoc.spanWith attributes $ foldMap convertInline inlines
+  StyledText Monospace as _ inlines _ ->
+    Pandoc.spanWith (toAttr $ mempty {metadataRoles = ["monospace"]} <> toMetadata as) $
+      foldMap convertInline inlines
   Symbol t -> Pandoc.str t
+
+toAttr :: Metadata UnparsedInline -> Attr
+toAttr m = (identifier, classes, keyvals)
+  where
+    identifier = case metadataIds m of
+      [] -> ""
+      (x : _) -> x -- TODO. Support multiple id's per entity.
+    classes = metadataRoles m
+    -- We could do
+    --   Map.toList $ metadataNamedAttributes m
+    -- but keyvals is used by Pandoc for data-* attributes.
+    keyvals = []

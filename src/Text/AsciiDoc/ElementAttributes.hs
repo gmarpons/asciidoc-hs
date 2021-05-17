@@ -78,7 +78,8 @@ data Position
 -- Attributes can be enclosed between single or double quotes. Quote-enclosed
 -- attributes can contain commas and quote characters (if escaped with "@\@").
 --
--- This parser only fails on empty input or space as first character.
+-- This parser does not fail for any input.
+-- It supports both the empty string and a sequence of spaces as input.
 --
 -- __Divergence from Asciidoctor__: When a string of the list is only partially
 -- enclosed between single or double quotes, Asciidoctor breaks the string into

@@ -76,13 +76,13 @@ addSourceRanges = fst . addSourceRanges' (1, 1)
       x@(AlphaNum _) ->
         StyledText
           Custom
-          (ParameterList (T.pack $ "data-sourcepos: " <> show range))
+          (InlineAttributeList (T.pack $ "data-sourcepos: " <> show range))
           ""
           (x :| [])
           ""
       x -> x
     prefixLength = \case
-      StyledText _ (ParameterList t) o _ _
+      StyledText _ (InlineAttributeList t) o _ _
         | T.null t -> T.length o
         | otherwise -> 2 + T.length t + T.length o
       _ -> 0
