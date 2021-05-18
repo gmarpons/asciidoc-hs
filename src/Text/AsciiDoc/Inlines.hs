@@ -467,7 +467,6 @@ defaultAttributeList = InlineAttributeList ""
 
 -- | Accepts an square-bracket-enclosed string with no restrictions on the
 -- characters in between, provided that there is at least one such character.
-
 inlineAttributeListP :: Monad m => Parser m InlineAttributeList
 inlineAttributeListP =
   flip Parsec.label "P" $

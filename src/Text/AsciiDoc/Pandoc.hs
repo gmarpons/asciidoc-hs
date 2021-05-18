@@ -18,14 +18,15 @@ module Text.AsciiDoc.Pandoc
 
     -- * Conversions
     convertDocument,
+    convertBlock,
     convertInline,
-
-    -- * TODO
+    -- TODO. Relocate parseInlines function
     parseInlines,
   )
 where
 
 import qualified Data.List.NonEmpty as NE
+import Data.Semigroup (Last (Last))
 import Data.Text (Text)
 import qualified Data.Text as T
 import Text.AsciiDoc.Blocks hiding (Parser)
@@ -66,21 +67,37 @@ convertDocument bs =
 
 convertBlock :: Block Inline -> Pandoc.Blocks
 convertBlock = \case
-  Paragraph _p i -> Pandoc.para $ convertInline i
-  Section _p (SectionHeader i n) bs ->
-    Pandoc.headerWith ("", [], []) (n + 1) (convertInline i) <> foldMap convertBlock bs
+  Paragraph p i ->
+    -- We cannot use <> to extend m because, to mimic Asciidoctor, metadataRoles
+    -- appending doesn't preserve the left value if the right one uses
+    -- "role=..." syntax. See Monoid Metadata instance.
+    let m = toMetadata p
+     in Pandoc.divWith (toAttr $ m {metadataRoles = "paragraph" : metadataRoles m}) $
+          prependTitleDiv m $
+            Pandoc.para $ convertInline i
+  -- Divergence from Asciidoctor: we add the possible title in the section
+  -- prefix to the header of the section, and not to the first non-header block
+  -- found, as Asciidoctor does.
+  Section p (SectionHeader i n) bs ->
+    let m = toMetadata p
+        level = n + 1
+        mSect = m {metadataRoles = T.pack ("sect" ++ show level) : metadataRoles m}
+     in Pandoc.divWith (toAttr mSect) $
+          prependTitleDiv m $
+            Pandoc.headerWith mempty level (convertInline i)
+              <> foldMap convertBlock bs
+  -- TODO. Compute Section's (nesting) before converting. The following case
+  -- should be redundant.
   -- TODO. Add a Metadata value to SectionHeaderBlock and avoid recalculating it
   SectionHeaderBlock p (SectionHeader i n) ->
-    flip const (toMetadata @[BlockPrefixItem UnparsedInline] @UnparsedInline p) $ Pandoc.headerWith ("", [], []) (n + 1) (convertInline i)
-
--- List
--- ThematicBreak
--- PageBreak
--- Nestable
--- VerseBlock ([BlockPrefixItem UnparsedInline]) ([a])
--- LiteralBlock LiteralBlockType ([BlockPrefixItem UnparsedInline]) ([Text])
--- BlockMacro BlockMacroType ([BlockPrefixItem UnparsedInline]) MacroArguments
--- DanglingBlockPrefixP ([BlockPrefixItem UnparsedInline])
+    let m = toMetadata p
+        level = n + 1
+     in Pandoc.divWith (toAttr m) $
+          prependTitleDiv m $
+            Pandoc.headerWith mempty level (convertInline i)
+  List _ _ _ -> undefined
+  Nestable _ _ _ -> undefined
+  DanglingBlockPrefix _ -> mempty
 
 convertInline :: Inline -> Pandoc.Inlines
 convertInline = \case
@@ -88,9 +105,9 @@ convertInline = \case
   EndOfInline _ -> mempty
   Newline t -> Pandoc.str t
   Space _ -> Pandoc.space
-  InlineSeq inlines -> {- Pandoc.spanWith ("", [], []) $ -} foldMap convertInline inlines
-  StyledText Bold (InlineAttributeList t) _ inlines _
-    | T.null t ->
+  InlineSeq inlines -> foldMap convertInline inlines
+  StyledText Bold as _ inlines _
+    | as == defaultAttributeList ->
       Pandoc.strong $ foldMap convertInline inlines
   -- NOTE. Asciidoctor creates a single <strong> element with attributes in this
   -- case, but Pandoc AST doesn't support attributes in <strong> nodes. The
@@ -102,16 +119,21 @@ convertInline = \case
   -- produces a <mark> element if the class "mark" is added to the span.
   --
   -- As Asciidoctor, we only produce a <mark> element for "empty" custom spans.
-  StyledText Custom as@(InlineAttributeList t) _ inlines _ ->
-    Pandoc.spanWith
-      ( toAttr $
-          if T.null t
-            then mempty {metadataRoles = ["mark"]} <> toMetadata as
-            else toMetadata as
-      )
-      $ foldMap convertInline inlines
-  StyledText Italic (InlineAttributeList t) _ inlines _
-    | T.null t ->
+  StyledText Custom as _ inlines _ ->
+    let m = toMetadata as :: Metadata UnparsedInline
+        -- Returns a functions that *can* enclose its argument into a span,
+        -- depending on 'as'.
+        encloseInSpan :: Pandoc.Inlines -> Pandoc.Inlines
+        encloseInSpan
+          | as == defaultAttributeList =
+            Pandoc.spanWith (toAttr $ mempty {metadataRoles = ["mark"]})
+          -- If attributes are not significant for translation to Pandoc, in
+          -- congruence with Asciidoctor we skip the superfluous span.
+          | toAttr m == mempty = id
+          | otherwise = Pandoc.spanWith $ toAttr $ toMetadata as
+     in encloseInSpan $ foldMap convertInline inlines
+  StyledText Italic as _ inlines _
+    | as == defaultAttributeList ->
       Pandoc.emph $ foldMap convertInline inlines
   -- NOTE. Asciidoctor creates a single <emph> element with attributes in this
   -- case, but Pandoc AST doesn't support attributes in <emph> nodes. The
@@ -150,3 +172,13 @@ toAttr m = (identifier, classes, keyvals)
     --   Map.toList $ metadataNamedAttributes m
     -- but keyvals is used by Pandoc for data-* attributes.
     keyvals = []
+
+-- | In case the metadata contains a block title, this function prepends a div
+-- with the title to the provided 'Blocks' value.
+prependTitleDiv :: Metadata UnparsedInline -> Pandoc.Blocks -> Pandoc.Blocks
+prependTitleDiv m = case metadataTitle m of
+  Nothing -> id
+  Just (Last t) ->
+    mappend $
+      Pandoc.divWith (toAttr $ mempty {metadataRoles = ["title"]}) $
+        Pandoc.plain (convertInline (parseInline t))

@@ -53,7 +53,7 @@ instance Semigroup (Metadata a) where
         b = metadataIds x <> metadataIds y
         -- If the right operand contains and explicit "role=ROLENAME" attribute,
         -- it replaces whatever roles contained in the left operand. The right
-        -- operand can add new roles with the "[.ROLENAME]" syntax.
+        -- operand can append new roles with the "[.ROLENAME]" syntax.
         c = case metadataRoleNamedAttribute y of
           Just yRoles -> getLast yRoles
           Nothing -> metadataRoles x <> metadataRoles y

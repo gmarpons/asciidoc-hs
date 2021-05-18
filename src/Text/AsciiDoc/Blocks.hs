@@ -34,6 +34,7 @@ module Text.AsciiDoc.Blocks
     Comment (..),
     MetadataItem (..),
     BlockPrefixItem (..),
+    UnparsedBlockPrefix,
     Block (..),
 
     -- * Parsers
@@ -238,25 +239,27 @@ data Block a
   | -- |
     SectionHeaderBlock UnparsedBlockPrefix (SectionHeader a)
   | List ListType UnparsedBlockPrefix (NonEmpty (NonEmpty (Block a)))
-  | Table {- TODO. Many things here -}
-  | ThematicBreak UnparsedBlockPrefix
-  | PageBreak UnparsedBlockPrefix
-  | -- | Sequence of blocks of some defined type that allows nested blocks
+  | {- Table -- TODO. Many things here -}
+    {- ThematicBreak UnparsedBlockPrefix -}
+    {- PageBreak UnparsedBlockPrefix -}
+
+    -- | Sequence of blocks of some defined type that allows nested blocks
     -- inside (i.e. admonition, sidebar, example, quote, and open block with no
     -- other standard type).
     Nestable NestableBlockType UnparsedBlockPrefix [Block a]
-  | VerseBlock UnparsedBlockPrefix [a]
-  | -- | Block type determines substitution group applied: @Verbatim@ or @None@
+  | {- VerseBlock UnparsedBlockPrefix [a] -}
+    {- -- | Block type determines substitution group applied: @Verbatim@ or @None@
     -- (aka passthrough).
     --
     -- TODO: Check that designed pipeline guarantees that pre-processor
     -- directives are expanded (if not escaped) even in literal blocks, as
     -- https://asciidoctor.org/docs/user-manual/#include-processing states.
-    LiteralBlock LiteralBlockType UnparsedBlockPrefix [Text]
-  | -- | Some macros accept block metadata, as e.g. @toc::[]@, that accepts
+    LiteralBlock LiteralBlockType UnparsedBlockPrefix [Text] -}
+
+    {- -- | Some macros accept block metadata, as e.g. @toc::[]@, that accepts
     -- defining its title with @.TITLE@ syntax.
-    BlockMacro BlockMacroType UnparsedBlockPrefix MacroArguments
-  | DanglingBlockPrefix UnparsedBlockPrefix
+    BlockMacro BlockMacroType UnparsedBlockPrefix MacroArguments -}
+    DanglingBlockPrefix UnparsedBlockPrefix
   deriving (Eq, Show, Functor)
 
 -- | Custom parser state for the parser for 'Block's.
