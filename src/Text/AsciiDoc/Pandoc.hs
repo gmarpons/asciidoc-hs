@@ -80,11 +80,23 @@ convertBlock = \case
   Section p (SectionHeader i n) bs ->
     let m = toMetadata p
         level = n + 1
-        mSect = m {metadataRoles = T.pack ("sect" ++ show level) : metadataRoles m}
-     in Pandoc.divWith (toAttr mSect) $
+        encloseInSectionDiv :: Pandoc.Blocks -> Pandoc.Blocks
+        encloseInSectionDiv
+          | n /= 0 =
+            Pandoc.divWith $
+              toAttr $
+                m {metadataRoles = T.pack ("sect" ++ show n) : metadataRoles m}
+          | n == 0 && toAttr m /= mempty = Pandoc.divWith $ toAttr m
+          | otherwise = id
+        encloseInSectionbodyDiv :: Pandoc.Blocks -> Pandoc.Blocks
+        encloseInSectionbodyDiv
+          | not (null bs) && n /= 0 =
+            Pandoc.divWith $ toAttr $ mempty {metadataRoles = ["sectionbody"]}
+          | otherwise = id
+     in encloseInSectionDiv $
           prependTitleDiv m $
             Pandoc.headerWith mempty level (convertInline i)
-              <> foldMap convertBlock bs
+              <> encloseInSectionbodyDiv (foldMap convertBlock bs)
   -- TODO. Compute Section's (nesting) before converting. The following case
   -- should be redundant.
   -- TODO. Add a Metadata value to SectionHeaderBlock and avoid recalculating it

@@ -83,10 +83,11 @@ import Data.Char (isSpace)
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, listToMaybe)
 import Data.Semigroup (Last (..))
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Debug.Trace
 import Text.AsciiDoc.ElementAttributes
 import qualified Text.AsciiDoc.LineParsers as LP
 import Text.AsciiDoc.Metadata
@@ -231,10 +232,7 @@ type UnparsedBlockPrefix = [BlockPrefixItem UnparsedInline]
 data Block a
   = -- | Regular paragraph.
     Paragraph UnparsedBlockPrefix a
-  | -- | This data constructor is not used during parsing, it requires an
-    -- additional "nesting" pass.
-    --
-    -- There can be a @Section@ inside an, e.g., open block, but it needs to
+  | -- | There can be a @Section@ inside an, e.g., open block, but it needs to
     -- have style @discrete@.
     Section UnparsedBlockPrefix (SectionHeader a) [Block a]
   | -- |
@@ -263,9 +261,26 @@ data Block a
     DanglingBlockPrefix UnparsedBlockPrefix
   deriving (Eq, Show, Functor)
 
+data BlockStyle
+  = NoBlockStyle
+  | Discrete
+  | OtherBlockStyle Text
+  deriving (Eq, Show)
+
+blockStyle :: Metadata a -> BlockStyle
+blockStyle m = case metadataStyle m of
+  Nothing -> NoBlockStyle
+  Just (Last t) | t == "discrete" -> Discrete
+  Just (Last t) -> OtherBlockStyle t
+
 -- | Custom parser state for the parser for 'Block's.
 data State = State
-  { -- | A stack of open 'Nestable' blocks.
+  { -- | The chain of section levels we are nested in, in reverse order.
+    -- This is used to know, when we find a new section header, if it starts a
+    -- new subsection of the current section or it closes the current section.
+    -- If this list is empty it means we have not found a section header, yet.
+    sectionLevels :: [Int],
+    -- | A stack of open 'Nestable' blocks.
     -- Innermost element is the top of the stack.
     --
     -- For every nestable block we store:
@@ -288,12 +303,13 @@ data State = State
 
 blockParserInitialState :: State
 blockParserInitialState =
-    State
-    { -- We use @'*' :* 0@ as an arbitrary value that is always present as the
-        -- bottom of the stack.
-        openBlocks = (AsteriskD :* 0, []) :| [],
-        env = mempty
-      }
+  State
+    { sectionLevels = [],
+      -- We use @'*' :* 0@ as an arbitrary value that is always present as the
+      -- bottom of the stack.
+      openBlocks = (AsteriskD :* 0, []) :| [],
+      env = mempty
+    }
 
 type Parser m = Parsec.ParsecT [Text] State m
 
@@ -304,16 +320,46 @@ blocksP :: Monad m => Parser m [Block UnparsedInline]
 blocksP = many (blockP []) <?> "blocks"
 
 blockP :: Monad m => [LP.LineParser Text] -> Parser m (Block UnparsedInline)
-blockP extraParagraphFinalizers = do
+-- Parsec.try necessary for the case a SectionHeaderBlock is accepted and
+-- then handleSectionNesting fails: then we need to try the same prefix + header
+-- for an outer section level.
+blockP extraParagraphFinalizers = Parsec.try $ do
   prefix <- option [] (NE.toList <$> blockPrefixP)
-  blockP' prefix <?> "block"
+  blockP1 prefix <?> "block"
   where
-    blockP' prefix =
+    blockP1 prefix =
       (nestableP prefix <?> "nestable")
-        <|> (sectionHeaderP prefix <?> "section header")
+        <|> handleSectionNesting (blockP2 prefix)
+    blockP2 prefix =
+      (sectionHeaderP prefix <?> "section header")
         <|> (listP prefix <?> "list")
         <|> (paragraphP prefix extraParagraphFinalizers <?> "paragraph")
         <|> (danglingBlockPrefixP prefix <?> "dangling block prefix")
+    handleSectionNesting p = do
+      block <- p
+      state <- Parsec.getState
+      let mCurrentLevel = listToMaybe $ sectionLevels state
+      case (block, mCurrentLevel) of
+        (b@(SectionHeaderBlock prefix _), _)
+          | style prefix == Discrete -> pure $ Debug.Trace.trace "H_A" b
+        (SectionHeaderBlock prefix h@(SectionHeader t newHeaderLevel), Nothing)
+          | True -> do
+            Debug.Trace.traceM ("H_B: " ++ show t)
+            Parsec.putState $ state {sectionLevels = [newHeaderLevel]}
+            bs <- blocksP
+            Parsec.putState state
+            pure $ Section prefix h bs
+        (SectionHeaderBlock prefix h@(SectionHeader t newHeaderLevel), Just currentLevel)
+          | currentLevel < newHeaderLevel -> do
+            Debug.Trace.traceM ("H_C: " ++ show t)
+            Parsec.putState $
+              state {sectionLevels = newHeaderLevel : sectionLevels state}
+            bs <- blocksP
+            Parsec.putState state
+            pure $ Section prefix h bs
+          | currentLevel >= newHeaderLevel -> Debug.Trace.trace "H_D" empty
+        (b, _) -> pure $ Debug.Trace.trace "H_E" b
+    style = blockStyle . toMetadata @_ @UnparsedInline
 
 blockPrefixP :: Monad m => Parser m (NonEmpty (BlockPrefixItem UnparsedInline))
 blockPrefixP = some pBlockPrefixItem <?> "block prefix"
@@ -409,13 +455,13 @@ sectionHeaderP prefix = do
   -- TODO. Use type-level Nat in 'Marker', so post-condition can be checked by
   -- the compiler.
   state <- Parsec.getState
-  case (NE.tail (openBlocks state), style) of
+  case (NE.tail $ openBlocks state, style) of
     -- If parser is currently inside a nestable block (tail state.openBlocks is
-    -- not null), and the section header we're trying to parse has a style
-    -- different from "discrete", this parser must fail (and the text be
+    -- not []), and the section header we're trying to parse has a style
+    -- different from Discrete, this parser must fail (and the text be
     -- considered a regular paragraph).
-    (_ : _, Nothing) -> empty
-    (_ : _, Just (Last t)) | t /= "discrete" -> empty
+    (_ : _, NoBlockStyle) -> empty
+    (_ : _, OtherBlockStyle _) -> empty
     -- In any other case: parse as a section header.
     _ -> do
       header <- sectionHeaderP'
@@ -430,7 +476,7 @@ sectionHeaderP prefix = do
               <$> choice (LP.runOfN 1 [EqualsSignH]) <* some space
                 <*> (LP.satisfy (not . isSpace) <> LP.anyRemainder)
           )
-    style = metadataStyle $ toMetadata @UnparsedBlockPrefix @UnparsedInline $ prefix
+    style = blockStyle $ toMetadata @UnparsedBlockPrefix @UnparsedInline $ prefix
 
 listP ::
   (Monad m) =>
