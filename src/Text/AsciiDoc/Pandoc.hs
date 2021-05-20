@@ -1,5 +1,4 @@
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Pandoc
@@ -29,8 +28,8 @@ import qualified Data.List.NonEmpty as NE
 import Data.Semigroup (Last (Last))
 import Data.Text (Text)
 import qualified Data.Text as T
-import Text.AsciiDoc.Blocks hiding (Parser)
-import Text.AsciiDoc.Inlines
+import Text.AsciiDoc.Blocks hiding (Parser, State)
+import Text.AsciiDoc.Inlines hiding (Parser, State)
 import Text.AsciiDoc.Metadata
 import Text.AsciiDoc.UnparsedInline
 import Text.Pandoc.Builder (Attr)
@@ -45,7 +44,7 @@ parseInlines = (fmap . fmap) parseInline
 
 parseInline :: UnparsedInline -> Inline
 parseInline x =
-  case Parsec.runParser inlinesP initialState "" (fromUnparsedInline x) of
+  case Parsec.runParser inlinesP inlineParserInitialState "" (fromUnparsedInline x) of
     Right result -> result
     Left parseError -> error $ "parseInlines: " <> show parseError
   where

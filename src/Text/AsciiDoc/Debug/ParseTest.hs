@@ -1,5 +1,5 @@
-{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# OPTIONS_HADDOCK hide #-}
 
 module Text.AsciiDoc.Debug.ParseTest
   ( OutputType (..),
@@ -40,7 +40,7 @@ parseInline ::
   Text ->
   IO ()
 parseInline parser outputType input = do
-  parseTestLogWithState False parser outputType I.initialState input
+  parseTestLogWithState False parser outputType I.inlineParserInitialState input
 
 -- | Usage example:
 --
@@ -53,7 +53,7 @@ parseFile ::
   IO ()
 parseFile parser outputType file = do
   tokens <- readTokens file
-  parseTestLogWithState False parser outputType mempty tokens
+  parseTestLogWithState False parser outputType B.blockParserInitialState tokens
 
 readTokens :: FilePath -> IO [Text]
 readTokens file = do

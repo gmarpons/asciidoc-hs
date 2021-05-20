@@ -40,7 +40,7 @@ module Text.AsciiDoc.Inlines
     -- * Parser type
     Parser,
     State (..),
-    initialState,
+    inlineParserInitialState,
   )
 where
 
@@ -97,8 +97,8 @@ newtype State = State
   }
   deriving (Eq, Show)
 
-initialState :: State
-initialState =
+inlineParserInitialState :: State
+inlineParserInitialState =
   State
     { openEnclosures = []
     }

@@ -13,7 +13,10 @@ import qualified Text.Parsec as Parsec (runParser)
 
 main :: IO ()
 main = do
-  result <- Parsec.runParser documentP mempty "" . T.lines <$> T.getContents
+  result <-
+    Parsec.runParser documentP blockParserInitialState ""
+      . T.lines
+      <$> T.getContents
   case result of
     Left err -> error $ "Parsing error: " <> show err
     Right doc ->

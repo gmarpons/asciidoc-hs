@@ -54,8 +54,9 @@ module Text.AsciiDoc.Blocks
     blankLineP,
 
     -- * Parser type
-    State (..),
     Parser,
+    State (..),
+    blockParserInitialState,
 
     -- * Helper low-level parsers
     lineP,
@@ -271,8 +272,8 @@ data State = State
     --
     -- * The syntactic 'DelimiterChar' used to open the block.
     --   This is what we need to recognize the matching closing delimiter.
-    -- * A stack (represented with a list) of list item markers previously used
-    --   in the current (possibly nested, aka multi-level, list).
+    -- * A stack of list item markers previously used in the current (possibly
+    --   nested, aka multi-level, list).
     --   If the parser position is not currently on a list, the stack is empty.
     --
     -- The list representing the stack of open nestable blocks is non-empty: at
@@ -285,17 +286,10 @@ data State = State
   }
   deriving (Eq, Show)
 
-instance Semigroup State where
-  x <> y =
+blockParserInitialState :: State
+blockParserInitialState =
     State
-      { openBlocks = openBlocks x <> openBlocks y,
-        env = env x <> env y
-      }
-
-instance Monoid State where
-  mempty =
-    State
-      { -- We use @'*' :* 0@ as an arbitrary value that is always present as the
+    { -- We use @'*' :* 0@ as an arbitrary value that is always present as the
         -- bottom of the stack.
         openBlocks = (AsteriskD :* 0, []) :| [],
         env = mempty
