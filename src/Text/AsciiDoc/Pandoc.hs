@@ -77,23 +77,21 @@ convertBlock = \case
   -- Divergence from Asciidoctor: we add the possible title in the section
   -- prefix to the header of the section, and not to the first non-header block
   -- found, as Asciidoctor does.
-  Section p (SectionHeader i n) bs ->
+  Section p level i bs ->
     let m = toMetadata p
-        level = n + 1
-        mSect = m {metadataRoles = T.pack ("sect" ++ show level) : metadataRoles m}
+        mSect = m {metadataRoles = T.pack ("sect" ++ show (level + 1)) : metadataRoles m}
      in Pandoc.divWith (toAttr mSect) $
           prependTitleDiv m $
-            Pandoc.headerWith mempty level (convertInline i)
+            Pandoc.headerWith mempty (level + 1) (convertInline i)
               <> foldMap convertBlock bs
   -- TODO. Compute Section's (nesting) before converting. The following case
   -- should be redundant.
   -- TODO. Add a Metadata value to SectionHeaderBlock and avoid recalculating it
-  SectionHeaderBlock p (SectionHeader i n) ->
+  SectionHeader p level i ->
     let m = toMetadata p
-        level = n + 1
      in Pandoc.divWith (toAttr m) $
           prependTitleDiv m $
-            Pandoc.headerWith mempty level (convertInline i)
+            Pandoc.headerWith mempty (level + 1) (convertInline i)
   List _ _ _ -> undefined
   Nestable _ _ _ -> undefined
   DanglingBlockPrefix _ -> mempty

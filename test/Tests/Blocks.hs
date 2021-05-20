@@ -25,7 +25,7 @@ parseDocument t = case parseTest documentP t of
 
 parseTest :: Parser Identity a -> [Text] -> Either Parsec.ParseError a
 parseTest parser tokens =
-  runIdentity $ Parsec.runParserT parser mempty "" tokens
+  runIdentity $ Parsec.runParserT parser blockParserInitialState "" tokens
 
 blockUnitTests :: TestTree
 blockUnitTests =
@@ -172,10 +172,10 @@ sectionHeaderUnitTests =
             [ "= Foo"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          []
-                         ( SectionHeader (MarkupLine "Foo" :| []) 0
-                         )
+                         0
+                         (MarkupLine "Foo" :| [])
                      ],
       testCase "level 1 section header" $ do
         p <-
@@ -183,10 +183,10 @@ sectionHeaderUnitTests =
             [ "== Foo"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          []
-                         ( SectionHeader (MarkupLine "Foo" :| []) 1
-                         )
+                         1
+                         (MarkupLine "Foo" :| [])
                      ],
       testCase "level 2 section header" $ do
         p <-
@@ -194,10 +194,10 @@ sectionHeaderUnitTests =
             [ "=== Foo"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          []
-                         ( SectionHeader (MarkupLine "Foo" :| []) 2
-                         )
+                         2
+                         (MarkupLine "Foo" :| [])
                      ],
       testCase "section header with two words" $ do
         p <-
@@ -205,10 +205,10 @@ sectionHeaderUnitTests =
             [ "= Foo bar"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          []
-                         ( SectionHeader (MarkupLine "Foo bar" :| []) 0
-                         )
+                         0
+                         (MarkupLine "Foo bar" :| [])
                      ],
       testCase "section header beginning with space" $ do
         p <-
@@ -216,10 +216,10 @@ sectionHeaderUnitTests =
             [ "=  Foo"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          []
-                         ( SectionHeader (MarkupLine "Foo" :| []) 0
-                         )
+                         0
+                         (MarkupLine "Foo" :| [])
                      ],
       testCase "section header followed by paragraph" $ do
         p <-
@@ -228,10 +228,10 @@ sectionHeaderUnitTests =
               "Bar"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          []
-                         ( SectionHeader (MarkupLine "Foo" :| []) 0
-                         ),
+                         0
+                         (MarkupLine "Foo" :| []),
                        Paragraph [] (MarkupLine "Bar" :| [])
                      ],
       testCase "section header followed by blank line and paragraph" $ do
@@ -242,10 +242,10 @@ sectionHeaderUnitTests =
               "Bar"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          []
-                         ( SectionHeader (MarkupLine "Foo" :| []) 0
-                         ),
+                         0
+                         (MarkupLine "Foo" :| []),
                        Paragraph [] (MarkupLine "Bar" :| [])
                      ],
       testCase "section header with block prefix" $ do
@@ -255,10 +255,10 @@ sectionHeaderUnitTests =
               "= Foo"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          [MetadataItem (BlockTitle (MarkupLine "Foo" :| []))]
-                         ( SectionHeader (MarkupLine "Foo" :| []) 0
-                         )
+                         0
+                         (MarkupLine "Foo" :| [])
                      ],
       testCase "section header followed by paragraph with block prefix" $ do
         p <-
@@ -268,10 +268,10 @@ sectionHeaderUnitTests =
               "Bar"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          []
-                         ( SectionHeader (MarkupLine "Foo" :| []) 0
-                         ),
+                         0
+                         (MarkupLine "Foo" :| []),
                        Paragraph
                          [MetadataItem (BlockTitle (MarkupLine "Bar" :| []))]
                          (MarkupLine "Bar" :| [])
@@ -283,12 +283,12 @@ sectionHeaderUnitTests =
               "= Foo"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          [MetadataItem (BlockAttributeList "discrete")]
-                         ( SectionHeader (MarkupLine "Foo" :| []) 0
-                         )
+                         0
+                         (MarkupLine "Foo" :| [])
                      ]
-        let (SectionHeaderBlock prefix _) : _ = p
+        let (SectionHeader prefix _ _) : _ = p
         toMetadata prefix
           `shouldBe` (mempty @(Metadata UnparsedInline))
             { metadataStyle =
@@ -1317,9 +1317,10 @@ commentUnitTests =
               "== Baz"
             ]
         p
-          `shouldBe` [ SectionHeaderBlock
+          `shouldBe` [ SectionHeader
                          [Comment (LineCommentSequence ("Foo" :| [" Bar"]))]
-                         (SectionHeader (MarkupLine "Baz" :| []) 1)
+                         1
+                         (MarkupLine "Baz" :| [])
                      ],
       testCase "block comment followed by line comment sequence" $ do
         p <-

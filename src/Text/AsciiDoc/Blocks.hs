@@ -19,7 +19,6 @@
 -- It tries to be compatible with Asciidoctor.
 module Text.AsciiDoc.Blocks
   ( -- * AST types
-    SectionHeader (..),
     HeaderLevel,
     ListType (..),
     ListCheckStatus (..),
@@ -96,14 +95,10 @@ import Text.Parsec ((<?>))
 import qualified Text.Parsec as Parsec
 import Text.Parsec.Char (alphaNum, char, space)
 
--- | An explicit header level is necessary, as the output style (e.g. font size)
--- depends on the actual number of @=@'s found (not the actual nesting level).
-data SectionHeader a = SectionHeader a HeaderLevel
-  deriving (Eq, Show, Functor)
-
--- | Greater or equal to 0. A section header prefixed by one single "@=@" has
--- level 0, and one with two "@=@"'s has level 1. This follows Asciidoctor
--- behavior.
+-- | Greater or equal than 0.
+-- A section header prefixed by one single "@=@" has level 0, and one with two
+-- "@=@"'s has level 1.
+-- This follows Asciidoctor's behavior.
 type HeaderLevel = Int
 
 -- Text: can contain symbols, does not begin nor end with space.
@@ -236,9 +231,13 @@ data Block a
     --
     -- There can be a @Section@ inside an, e.g., open block, but it needs to
     -- have style @discrete@.
-    Section UnparsedBlockPrefix (SectionHeader a) [Block a]
-  | -- |
-    SectionHeaderBlock UnparsedBlockPrefix (SectionHeader a)
+    Section UnparsedBlockPrefix HeaderLevel a [Block a]
+  | -- | A section header contains the same information as a section, except the
+    -- contained sequence of blocks.
+    --
+    -- After the "nesting" pass, all @SectionHeader@s but @discrete@ ones are
+    -- converted to proper @Section@s.
+    SectionHeader UnparsedBlockPrefix HeaderLevel a
   | List ListType UnparsedBlockPrefix (NonEmpty (NonEmpty (Block a)))
   | {- Table -- TODO. Many things here -}
     {- ThematicBreak UnparsedBlockPrefix -}
@@ -288,12 +287,12 @@ data State = State
 
 blockParserInitialState :: State
 blockParserInitialState =
-    State
+  State
     { -- We use @'*' :* 0@ as an arbitrary value that is always present as the
-        -- bottom of the stack.
-        openBlocks = (AsteriskD :* 0, []) :| [],
-        env = mempty
-      }
+      -- bottom of the stack.
+      openBlocks = (AsteriskD :* 0, []) :| [],
+      env = mempty
+    }
 
 type Parser m = Parsec.ParsecT [Text] State m
 
@@ -418,19 +417,19 @@ sectionHeaderP prefix = do
     (_ : _, Just (Last t)) | t /= "discrete" -> empty
     -- In any other case: parse as a section header.
     _ -> do
-      header <- sectionHeaderP'
+      (level, text) <- sectionHeaderP'
       _ <- many blankLineP
-      pure $ SectionHeaderBlock prefix header
+      pure $ SectionHeader prefix level text
   where
-    sectionHeaderP' :: Monad m => Parser m (SectionHeader UnparsedInline)
+    sectionHeaderP' :: Monad m => Parser m (HeaderLevel, UnparsedInline)
     sectionHeaderP' =
-      (\(_c :* n, value) -> SectionHeader (MarkupLine value :| []) (n - 1))
+      (\(_c :* n, x) -> (n - 1, MarkupLine x :| []))
         <$> lineP
           ( (,)
               <$> choice (LP.runOfN 1 [EqualsSignH]) <* some space
                 <*> (LP.satisfy (not . isSpace) <> LP.anyRemainder)
           )
-    style = metadataStyle $ toMetadata @UnparsedBlockPrefix @UnparsedInline $ prefix
+    style = metadataStyle $ toMetadata @_ @UnparsedInline $ prefix
 
 listP ::
   (Monad m) =>

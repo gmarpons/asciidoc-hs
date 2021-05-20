@@ -22,7 +22,7 @@ parseInline t =
 
 parseTest :: Parser Identity a -> Text -> Either Parsec.ParseError a
 parseTest parser t =
-  runIdentity $ Parsec.runParserT parser initialState "" t
+  runIdentity $ Parsec.runParserT parser inlineParserInitialState "" t
 
 inlineUnitTests :: TestTree
 inlineUnitTests =
