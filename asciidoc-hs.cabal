@@ -2,20 +2,48 @@ cabal-version:          2.4
 name:                   asciidoc-hs
 version:                0.1.0.0
 synopsis:               AsciiDoc parser that can be used as a Pandoc front-end
--- description:
+description:            See README.adoc for more info.
 homepage:               https://github.com/gmarpons/asciidoc-hs
 bug-reports:            https://github.com/gmarpons/asciidoc-hs/issues
-tested-with:            GHC==8.10.1
 license:                BSD-3-Clause
 license-file:           LICENSE
 author:                 Guillem Marpons
-maintainer:             gmarpons@mailbox.org
-copyright:              Guillem Marpons 2020
+maintainer:             Guillem Marpons <gmarpons@mailbox.org>
+copyright:              2020-2021 Guillem Marpons
+build-type:             Simple
 category:               Text
-extra-source-files:     CHANGELOG.adoc,
+extra-doc-files:        CHANGELOG.adoc
                         README.adoc
+tested-with:            GHC == 8.8.4
+                        GHC == 8.10.4
+
+source-repository head
+  type:                 git
+  location:             https://github.com/gmarpons/asciidoc-hs.git
+
+common common-options
+  build-depends:        base >= 4.12.0.0 && < 4.15
+  ghc-options:          -Wall
+                        -Wcompat
+                        -Widentities
+                        -Wincomplete-uni-patterns
+                        -Wincomplete-record-updates
+  if impl(ghc >= 8.0)
+    ghc-options:        -Wredundant-constraints
+  if impl(ghc >= 8.2)
+    ghc-options:        -fhide-source-paths
+  if impl(ghc >= 8.4)
+    ghc-options:        -Wmissing-export-lists
+                        -Wpartial-fields
+  if impl(ghc >= 8.8)
+    ghc-options:        -Wmissing-deriving-strategies
+
+  default-language:     Haskell2010
+  default-extensions:   LambdaCase,
+                        OverloadedStrings
 
 library
+  import:               common-options
   hs-source-dirs:       src
   exposed-modules:      Text.AsciiDoc.ElementAttributes
                         Text.AsciiDoc.Blocks
@@ -26,51 +54,28 @@ library
                         Text.AsciiDoc.SourceRange
                         Text.AsciiDoc.SpecialChars
                         Text.AsciiDoc.UnparsedInline
-  build-depends:        base >= 4.12.0.0,
-                        containers >= 0.6,
+  build-depends:        containers >= 0.6,
                         optics-core >= 0.2,
                         pandoc-types >= 1.20,
                         parsec >= 3.1.0,
                         parser-combinators >= 1.2.0,
                         syb >= 0.7.1,
                         text >= 1.2.0
-  default-language:     Haskell2010
-  default-extensions:   LambdaCase,
-                        OverloadedStrings
-  ghc-options:          -Wall
-                        -Wincomplete-uni-patterns
-                        -Wincomplete-record-updates
-                        -Wcompat
-                        -Widentities
-                        -Wredundant-constraints
-                        -Wmissing-export-lists
-                        -Wpartial-fields
-                        -fhide-source-paths
-                        -freverse-errors
 
 executable asciidoc-hs
+  import:               common-options
   hs-source-dirs:       exe
   main-is:              Main.hs
   build-depends:        asciidoc-hs,
                         aeson >= 1.4.7,
-                        base >= 4.12.0.0,
                         parsec >= 3.1.0,
                         text >= 1.2.0
-  default-language:     Haskell2010
-  default-extensions:   LambdaCase,
-                        OverloadedStrings
-  ghc-options:          -Wall
-                        -Wincomplete-uni-patterns
-                        -Wincomplete-record-updates
-                        -Wcompat
-                        -Widentities
-                        -Wredundant-constraints
-                        -Wmissing-export-lists
-                        -Wpartial-fields
-                        -fhide-source-paths
-                        -freverse-errors
+  ghc-options:          -threaded
+                        -rtsopts
+                        -with-rtsopts=-N
 
 test-suite asciidoc-hs-test
+  import:               common-options
   type:                 exitcode-stdio-1.0
   hs-source-dirs:       test
   main-is:              Tests/Main.hs
@@ -78,7 +83,6 @@ test-suite asciidoc-hs-test
                         Tests.Inlines
                         Tests.Metadata
   build-depends:        asciidoc-hs,
-                        base >= 4.12.0.0,
                         containers >= 0.6,
                         hspec-expectations-pretty-diff >= 0.7.2.5,
                         parsec >= 3.1.0,
@@ -87,12 +91,12 @@ test-suite asciidoc-hs-test
                         tasty,
                         tasty-hunit-compat >= 0.2,
                         text >= 1.2.0
-  default-language:     Haskell2010
-  default-extensions:   LambdaCase,
-                        OverloadedStrings
-  ghc-options:          -Wall
+  ghc-options:          -threaded
+                        -rtsopts
+                        -with-rtsopts=-N
 
 library debug-with-parsec-free
+  import:               common-options
   hs-source-dirs:       src
   exposed-modules:      Text.AsciiDoc.Debug.ParseTest
   other-modules:        Text.AsciiDoc.Blocks
@@ -104,8 +108,7 @@ library debug-with-parsec-free
                         Text.AsciiDoc.SourceRange
                         Text.AsciiDoc.SpecialChars
                         Text.AsciiDoc.UnparsedInline
-  build-depends:        base >= 4.12.0.0,
-                        containers >= 0.6,
+  build-depends:        containers >= 0.6,
                         mtl,
                         optics-core >= 0.2,
                         pandoc-types >= 1.20,
@@ -114,7 +117,3 @@ library debug-with-parsec-free
                         pretty-simple >= 4.0,
                         syb >= 0.7.1,
                         text >= 1.2.0
-  default-language:     Haskell2010
-  default-extensions:   LambdaCase,
-                        OverloadedStrings
-  ghc-options:          -Wall
