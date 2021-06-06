@@ -1,6 +1,6 @@
 cabal-version:          2.4
 name:                   asciidoc-hs
-version:                0.1.0.0
+version:                0.0.0.0
 synopsis:               AsciiDoc parser that can be used as a Pandoc front-end
 description:            See README.adoc for more info.
 homepage:               https://github.com/gmarpons/asciidoc-hs
