@@ -1,9 +1,6 @@
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Blocks
@@ -111,12 +108,12 @@ data ListType
     -- from, but Asciidoctor treats them as an independent entity, very similar to
     -- any other list.
     Callout -- PEG: "<" (Num / ".") ">" Space+ Text'
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 data ListCheckStatus
   = Checked
   | Unchecked
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 data NestableBlockType
   = Admonition AdmonitionType
@@ -125,7 +122,7 @@ data NestableBlockType
   | Quote
   | -- | Open block (delimited with "--") with non-standard name.
     Other Text
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 data AdmonitionType
   = Note
@@ -133,7 +130,7 @@ data AdmonitionType
   | Important
   | Caution
   | Warning
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 -- | Literal block types are subject by default to substitution group
 -- "Verbatim", if not stated otherwise. The actual substitutions applied can be
@@ -148,33 +145,33 @@ data LiteralBlockType
   | -- | Default substitution group: None (aka Passthrough).
     Stem
   | Verse
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 -- | The @Int@ is the indentation of the block. If the @Literal@ block is not
 -- signaled by indentation (i.e., @....@ or @[literal]@ is used), then
 -- indentation is 0 (all preceding space is copied verbatim as content).
 newtype LiteralIndentation = LiteralIndentation Int
-  deriving (Eq, Show)
+  deriving newtype (Eq, Show)
 
 data BlockMacroType
   = ImageBlockMacro
   | TableOfContentsMacro
   | CustomBlockMacro
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 data MacroArguments = MacroArguments
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 data IncludeOptions
   = IncludeOptions
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 type AttributeId = Text
 
 data Comment
   = LineCommentSequence (NonEmpty Text)
   | BlockComment [Text]
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 -- | A Block can be preceded by an arbitrary (finite) list of @MetadataItem@s.
 --
@@ -195,7 +192,7 @@ data MetadataItem a
     -- TODO. Check if some attributes in the list can contain full inlines, as
     -- it's the case with standalone (aka attribute entry) attributes.
     BlockAttributeList Text
-  deriving (Eq, Show, Functor)
+  deriving stock (Eq, Show, Functor)
 
 instance ToMetadata (MetadataItem UnparsedInline) UnparsedInline where
   toMetadata (BlockId i) = mempty {metadataIds = [i]}
@@ -212,7 +209,7 @@ data BlockPrefixItem a
   | -- | A value of @Nothing@ means the attribute has been unset.
     AttributeEntry AttributeId (Maybe a)
   | Comment Comment
-  deriving (Eq, Show, Functor)
+  deriving stock (Eq, Show, Functor)
 
 instance ToMetadata (BlockPrefixItem UnparsedInline) UnparsedInline where
   toMetadata (MetadataItem x) = toMetadata x
@@ -260,7 +257,7 @@ data Block a
     -- defining its title with @.TITLE@ syntax.
     BlockMacro BlockMacroType UnparsedBlockPrefix MacroArguments -}
     DanglingBlockPrefix UnparsedBlockPrefix
-  deriving (Eq, Show, Functor)
+  deriving stock (Eq, Show, Functor)
 
 -- | Custom parser state for the parser for 'Block's.
 data State = State
@@ -283,7 +280,7 @@ data State = State
     -- | An environment mapping attribute names to their values (i.e. inlines).
     env :: Map.Map AttributeId Text
   }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 blockParserInitialState :: State
 blockParserInitialState =

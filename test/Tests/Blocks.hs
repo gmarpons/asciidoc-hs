@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Tests.Blocks
   ( parseTest,
@@ -288,16 +288,18 @@ sectionHeaderUnitTests =
                          0
                          (MarkupLine "Foo" :| [])
                      ]
-        let (SectionHeader prefix _ _) : _ = p
-        toMetadata prefix
-          `shouldBe` (mempty @(Metadata UnparsedInline))
-            { metadataStyle =
-                Just
-                  ( Last
-                      { getLast = "discrete"
-                      }
-                  )
-            },
+        case p of
+          (SectionHeader prefix _ _) : _ ->
+            toMetadata prefix
+              `shouldBe` (mempty @(Metadata UnparsedInline))
+                { metadataStyle =
+                    Just
+                      ( Last
+                          { getLast = "discrete"
+                          }
+                      )
+                }
+          _ -> error "test case: discrete section header",
       -- TODO. Must change when indented literal paragraphs are implemented.
       testCase "false section header (space before '=')" $ do
         p <-

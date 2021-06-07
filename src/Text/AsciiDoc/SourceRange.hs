@@ -1,9 +1,14 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 -- |
--- Module      :  Text.AsciiDoc.Inlines Copyright   :  © 2020–present Guillem
--- Marpons License     :  BSD-3-Clause
+-- Module      :  Text.AsciiDoc.SourceRange
+-- Copyright   :  © 2020–present Guillem Marpons
+-- License     :  BSD-3-Clause
 --
--- Maintainer  :  Guillem Marpons <gmarpons@mailbox.org> Stability   :
--- experimental Portability :  portable
+-- Maintainer  :  Guillem Marpons <gmarpons@mailbox.org>
+-- Stability   :  experimental
+-- Portability :  portable
 --
 -- This module contains functions that traverse an AsciiDoc AST and decorate it
 -- with source ranges information.
@@ -31,7 +36,7 @@ childInlines = Optics.traversalVL subInlines'
   where
     subInlines' f = \case
       StyledText style parameters open inlines close ->
-        fmap (\x -> StyledText style parameters open x close) $ traverse f inlines
+        (\x -> StyledText style parameters open x close) <$> traverse f inlines
       InlineSeq inlines -> InlineSeq <$> traverse f inlines
       x -> pure x
 

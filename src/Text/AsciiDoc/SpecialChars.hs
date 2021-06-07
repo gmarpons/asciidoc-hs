@@ -1,7 +1,7 @@
-{-# LANGUAGE EmptyDataDeriving #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.SpecialChars
@@ -53,24 +53,24 @@ import qualified Data.Text as T (justifyRight)
 
 -- | Used as a type parameter in 'SpecialChar' to indicate that a character is
 -- used in a delimiter for a block comment or in a marker for a line comment.
-data CommentChar deriving (Eq, Show)
+data CommentChar deriving stock (Eq, Show)
 
 -- | Used as a type parameter in 'SpecialChar' to indicate that a character is
 -- used in a block delimiter.
-data DelimiterChar deriving (Eq, Show)
+data DelimiterChar deriving stock (Eq, Show)
 
 -- | Used as a type parameter in 'SpecialChar' to indicate that a character is
 -- used in a formatting mark for defining inline text (such as bold or
 -- monospace) and punctuation (such as curved quotation marks) styles.
-data FormatChar deriving (Eq, Show)
+data FormatChar deriving stock (Eq, Show)
 
 -- | Used as a type parameter in 'SpecialChar' to indicate that a character is
 -- used in a section header marker.
-data HeaderChar deriving (Eq, Show)
+data HeaderChar deriving stock (Eq, Show)
 
 -- | Used as a type parameter in 'SpecialChar' to indicate that a character is
 -- used in a list item marker.
-data ListChar deriving (Eq, Show)
+data ListChar deriving stock (Eq, Show)
 
 -- | Algebraic type for describing characters that have a special meaning in
 -- AsciiDoc, like @*@, @=@, or @/@.
@@ -100,7 +100,7 @@ data SpecialChar a where
   AsteriskL :: SpecialChar ListChar
   HyphenL :: SpecialChar ListChar
 
-deriving instance (Eq a) => Eq (SpecialChar a)
+deriving stock instance (Eq a) => Eq (SpecialChar a)
 
 instance Show (SpecialChar a) where
   show = show . fromSpecialChar
@@ -129,7 +129,7 @@ fromSpecialChar = \case
 data Mark
   = SingleMark (SpecialChar FormatChar)
   | DoubleMark (SpecialChar FormatChar)
-  deriving (Eq)
+  deriving stock (Eq)
 
 instance Show Mark where
   show = fromMark
@@ -190,21 +190,21 @@ data Marker a
   = -- | Most markers consist in a single character repeated a number of times.
     SpecialChar a :* Int
 
-deriving instance Eq (Marker CommentChar)
+deriving stock instance Eq (Marker CommentChar)
 
-deriving instance Eq (Marker DelimiterChar)
+deriving stock instance Eq (Marker DelimiterChar)
 
-deriving instance Eq (Marker FormatChar)
+deriving stock instance Eq (Marker FormatChar)
 
-deriving instance Eq (Marker ListChar)
+deriving stock instance Eq (Marker ListChar)
 
-deriving instance Show (Marker CommentChar)
+deriving stock instance Show (Marker CommentChar)
 
-deriving instance Show (Marker DelimiterChar)
+deriving stock instance Show (Marker DelimiterChar)
 
-deriving instance Show (Marker FormatChar)
+deriving stock instance Show (Marker FormatChar)
 
-deriving instance Show (Marker ListChar)
+deriving stock instance Show (Marker ListChar)
 
 fromMarker :: Marker a -> Text
 fromMarker (c :* n) = T.justifyRight n (fromSpecialChar c) ""

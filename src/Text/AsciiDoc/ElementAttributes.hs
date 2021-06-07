@@ -1,3 +1,6 @@
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 -- |
 -- Module      :  Text.AsciiDoc.ElementAttributes
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -58,7 +61,7 @@ data ElementAttribute
     -- More than one id is admissible, even if this situation normally rises a
     -- warning.
     ShorthandSyntaxAttribute Text [Text] [Text] [Text]
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 newtype PositionedAttribute = PositionedAttribute (Int, ElementAttribute)
 
@@ -153,7 +156,7 @@ attributeListP =
 data CommaAcceptance
   = AcceptCommas
   | RejectCommas
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 attributeShorthandSyntaxP :: CommaAcceptance -> AttributeParser ElementAttribute
 attributeShorthandSyntaxP commaAcceptance =

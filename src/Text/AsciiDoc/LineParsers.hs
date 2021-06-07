@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- |
 -- Module      :  Text.AsciiDoc.LineParsers
 -- Copyright   :  © 2020–present Guillem Marpons

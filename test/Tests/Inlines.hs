@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Tests.Inlines
   ( inlineUnitTests,
   )
@@ -379,7 +381,7 @@ punctuationSymbolTests =
         i `shouldBe` InlineSeq (StyledText Bold (InlineAttributeList "") "*" (StyledText Custom (InlineAttributeList "") "#" (AlphaNum "a" :| []) "#" :| [Symbol ",", Space " ", AlphaNum "b"]) "*" :| []),
       testCase "(#a#,#b#) punctuation symbol separating two enclosures" $ do
         i <- parseInline "#a#,#b#"
-        i `shouldBe` InlineSeq (StyledText Custom (InlineAttributeList "") "#" (AlphaNum "a" :| []) "#" :| [Symbol ",", (StyledText Custom (InlineAttributeList "") "#" (AlphaNum "b" :| []) "#")]),
+        i `shouldBe` InlineSeq (StyledText Custom (InlineAttributeList "") "#" (AlphaNum "a" :| []) "#" :| [Symbol ",", StyledText Custom (InlineAttributeList "") "#" (AlphaNum "b" :| []) "#"]),
       testCase "(#¿a?#) question marks inside constrained enclosure" $ do
         i <- parseInline "#¿a?#"
         i `shouldBe` InlineSeq (StyledText Custom (InlineAttributeList "") "#" (Symbol "¿" :| [AlphaNum "a", Symbol "?"]) "#" :| []),

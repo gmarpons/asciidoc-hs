@@ -1,5 +1,5 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Metadata
@@ -45,7 +45,7 @@ data Metadata a = Metadata
     metadataNamedAttributes :: Map.Map Text Text,
     metadataRoleNamedAttribute :: Maybe (Last [Text])
   }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 instance Semigroup (Metadata a) where
   x <> y =
