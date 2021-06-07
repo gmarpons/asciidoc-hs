@@ -27,10 +27,8 @@ jobs:
             ghc: 8.8.4
 
     steps:
-    - name: Checkout repository and submodules
+    - name: Checkout repository
       uses: actions/checkout@v2
-      with:
-        submodules: recursive
 
     - name: Setup Haskell
       uses: haskell/actions/setup@v1
@@ -52,11 +50,11 @@ jobs:
     - name: Build
       run: |
         cabal configure --enable-tests --enable-benchmarks --test-show-details=direct
-        cabal build exe:asciidoc-hs test:asciidoc-hs-test
+        cabal build
 
     - name: Test
       run: |
-        cabal test asciidoc-hs-test
+        cabal test
 
   stack:
     name: stack / ghc ${{ matrix.ghc }}
@@ -67,10 +65,8 @@ jobs:
           - "8.10.4"
 
     steps:
-    - name: Checkout repository and submodules
+    - name: Checkout repository
       uses: actions/checkout@v2
-      with:
-        submodules: recursive
 
     - name: Setup Haskell Stack
       uses: haskell/actions/setup@v1
