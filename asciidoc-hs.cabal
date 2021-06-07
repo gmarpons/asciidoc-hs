@@ -21,6 +21,11 @@ source-repository head
   type:                 git
   location:             https://github.com/gmarpons/asciidoc-hs.git
 
+flag debug-with-parsec-free
+  Description: Enable debugging with parsec-free
+  Default:     False
+  Manual:      True
+
 common common-options
   build-depends:        base >= 4.12.0.0 && < 4.15
   ghc-options:          -Wall
@@ -59,8 +64,10 @@ common common-options
 library
   import:               common-options
   hs-source-dirs:       src
-  exposed-modules:      Text.AsciiDoc.ElementAttributes
+  if flag(debug-with-parsec-free)
+    exposed-modules:    Text.AsciiDoc.Debug.ParseTest
                         Text.AsciiDoc.Blocks
+                        Text.AsciiDoc.ElementAttributes
                         Text.AsciiDoc.Inlines
                         Text.AsciiDoc.LineParsers
                         Text.AsciiDoc.Metadata
@@ -68,7 +75,28 @@ library
                         Text.AsciiDoc.SourceRange
                         Text.AsciiDoc.SpecialChars
                         Text.AsciiDoc.UnparsedInline
-  build-depends:        containers >= 0.6,
+  else
+    exposed-modules:    Text.AsciiDoc.Blocks
+                        Text.AsciiDoc.ElementAttributes
+                        Text.AsciiDoc.Inlines
+                        Text.AsciiDoc.LineParsers
+                        Text.AsciiDoc.Metadata
+                        Text.AsciiDoc.Pandoc
+                        Text.AsciiDoc.SourceRange
+                        Text.AsciiDoc.SpecialChars
+                        Text.AsciiDoc.UnparsedInline
+  if flag(debug-with-parsec-free)
+    build-depends:      containers >= 0.6,
+                        mtl,
+                        optics-core >= 0.2,
+                        pandoc-types >= 1.20,
+                        parsec-free == 3.1.11.7,
+                        parser-combinators >= 1.2.0,
+                        pretty-simple >= 4.0,
+                        syb >= 0.7.1,
+                        text >= 1.2.0
+  else
+    build-depends:      containers >= 0.6,
                         optics-core >= 0.2,
                         pandoc-types >= 1.20,
                         parsec >= 3.1.0,
@@ -108,26 +136,3 @@ test-suite asciidoc-hs-test
   ghc-options:          -threaded
                         -rtsopts
                         -with-rtsopts=-N
-
-library debug-with-parsec-free
-  import:               common-options
-  hs-source-dirs:       src
-  exposed-modules:      Text.AsciiDoc.Debug.ParseTest
-  other-modules:        Text.AsciiDoc.Blocks
-                        Text.AsciiDoc.ElementAttributes
-                        Text.AsciiDoc.Inlines
-                        Text.AsciiDoc.LineParsers
-                        Text.AsciiDoc.Metadata
-                        Text.AsciiDoc.Pandoc
-                        Text.AsciiDoc.SourceRange
-                        Text.AsciiDoc.SpecialChars
-                        Text.AsciiDoc.UnparsedInline
-  build-depends:        containers >= 0.6,
-                        mtl,
-                        optics-core >= 0.2,
-                        pandoc-types >= 1.20,
-                        parsec-free == 3.1.11.7,
-                        parser-combinators >= 1.2.0,
-                        pretty-simple >= 4.0,
-                        syb >= 0.7.1,
-                        text >= 1.2.0

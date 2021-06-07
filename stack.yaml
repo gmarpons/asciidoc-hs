@@ -2,7 +2,6 @@ resolver: lts-17.14
 
 packages:
 - .
-- parsec-free
 
 extra-deps:
 - repr-tree-syb-0.1.1@sha256:b3af0d338ab5273ebfc993ab1a3b10a36febffdfad474fb6ae7c2ab1fdb49702,1100
