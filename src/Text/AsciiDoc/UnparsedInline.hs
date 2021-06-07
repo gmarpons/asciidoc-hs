@@ -1,3 +1,5 @@
+{-# LANGUAGE DerivingStrategies #-}
+
 -- |
 -- Module      :  Text.AsciiDoc.UnparsedInline
 -- Copyright   :  © 2020–present Guillem Marpons
@@ -34,4 +36,4 @@ type UnparsedInline = NonEmpty InputLine
 data InputLine
   = MarkupLine Text
   | CommentLine Text
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)

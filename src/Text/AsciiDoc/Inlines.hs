@@ -1,8 +1,7 @@
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- |
 -- Module      :  Text.AsciiDoc.Inlines
@@ -95,7 +94,7 @@ newtype State = State
     -- enclosure.
     openEnclosures :: [Mark]
   }
-  deriving (Eq, Show)
+  deriving newtype (Eq, Show)
 
 inlineParserInitialState :: State
 inlineParserInitialState =
@@ -109,7 +108,7 @@ data Style
   | Custom
   | Italic
   | Monospace
-  deriving (Eq, Show, Typeable, Data)
+  deriving stock (Eq, Show, Typeable, Data)
 
 --  | Subscript
 --  | Superscript
@@ -139,7 +138,7 @@ data Inline
   | Space Text
   | StyledText Style InlineAttributeList Text (NonEmpty Inline) Text
   | Symbol Text
-  deriving (Eq, Show, Typeable, Data)
+  deriving stock (Eq, Show, Typeable, Data)
 
 --  | InlineMacro Text
 --  | EscapedSymbol Text
@@ -442,7 +441,8 @@ alphaNumP =
 -- Parser for element attribute (aka parameter) lists  ------------------------
 
 newtype InlineAttributeList = InlineAttributeList Text
-  deriving (Eq, Show, Data, Typeable)
+  deriving newtype (Eq, Show)
+  deriving stock (Data, Typeable)
 
 -- | This instance accepts the same kind of attributes than the instance for
 -- 'Text.AsciiDoc.Blocks.BlockPrefixItem's, including the shorthand syntax.

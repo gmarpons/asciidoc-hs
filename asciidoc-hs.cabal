@@ -39,7 +39,21 @@ common common-options
     ghc-options:        -Wmissing-deriving-strategies
 
   default-language:     Haskell2010
-  default-extensions:   LambdaCase,
+  if impl(ghc >= 9.2)
+    default-extensions: GHC2021
+  else
+    default-extensions: DeriveDataTypeable
+                        DeriveFunctor
+                        EmptyDataDeriving
+                        FlexibleContexts
+                        FlexibleInstances
+                        GeneralizedNewtypeDeriving
+                        MultiParamTypeClasses
+                        StandaloneDeriving
+                        TypeApplications
+  other-extensions:     DerivingStrategies
+                        GADTs
+                        LambdaCase
                         OverloadedStrings
 
 library
