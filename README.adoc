@@ -1,11 +1,31 @@
 = asciidoc-hs
 
-Extensible and lossless parser for the lightweight markup language https://asciidoctor.org/docs/what-is-asciidoc/[AsciiDoc] that can be used as a https://pandoc.org/[Pandoc] front-end.
+ifndef::env-github[]
+:icons: font
+:outfilesuffix: .adoc
+:caution-caption: :fire:
+:important-caption: :exclamation:
+:note-caption: :paperclip:
+:tip-caption: :bulb:
+:warning-caption: :warning:
+endif::[]
+// Variables:
+:release-version:
+// URLs:
+:url-repo: https://github.com/gmarpons/asciidoc-hs
 
-== Intended Features
+WARNING: This project is in its early stages.
+Don't expect to use it in anything relevant yet.
 
-[NOTE]
-WIP. Virtually starting out.
+`asciidoc-hs` is a parser for the lightweight markup language https://docs.asciidoctor.org/asciidoc/latest/[AsciiDoc] that can be used as a https://pandoc.org/[Pandoc] front-end.
+
+It draws on https://github.com/jgm/commonmark-hs[`commonmark-hs`] and is written in pure Haskell.
+
+ifdef::env-github[]
+image:https://github.com/gmarpons/asciidoc-hs/workflows/CI/badge.svg[Build Status (GitHub Actions),link={url-repo}/actions]
+endif::[]
+
+== Planned Features
 
 - [ ] Full compatibility with https://asciidoctor.org[Asciidoctor] and with the result of the  https://www.eclipse.org/org/workinggroups/asciidoc-charter.php[AsciiDoc standardization process] (long-term goal).
 - [ ] Generates Pandoc JSON. Other back-ends can be easily added.
@@ -13,13 +33,20 @@ WIP. Virtually starting out.
 - [ ] Modular and extensible design: some syntactic features can be disabled and others can be easily added.
 - [ ] Scriptable in a similar way to Pandoc, but using and AST/DOM that is specific to AsciiDoc and fully supports the result of the standardization effort (long-term goal).
 - [ ] Can be used for (lossless) source-to-source transformations (long-term goal).
-- [ ] Implemented in Haskell.
 
-== Acknowledgements
+== Install
 
-This work is supported by a https://boards.greenhouse.io/tweag/jobs/4638654002[Tweag Open Source Fellowship].
+_Comming soon_.
 
-== Contributions
+== Use
+
+_Comming soon_.
+
+== Contribute
 
 Contributions are Welcome!
 Contact me at gmarpons at mailbox.org.
+
+== Acknowledgements
+
+This work has been supported by a https://www.tweag.io/blog/2020-02-14-os-fellowship/[Tweag Open Source Fellowship].
