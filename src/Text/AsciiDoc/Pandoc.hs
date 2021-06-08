@@ -94,8 +94,13 @@ convertBlock = \case
      in Pandoc.divWith (toAttr m) $
           prependTitleDiv m $
             Pandoc.headerWith mempty (level + 1) (convertInline i)
-  List _ _ _ -> undefined
-  Nestable _ _ _ -> undefined
+  List (Unordered Nothing) p bs ->
+    let m = toMetadata p
+     in Pandoc.divWith (toAttr $ m {metadataRoles = "ulist" : metadataRoles m}) $
+          prependTitleDiv m $
+            Pandoc.bulletList $ NE.toList $ fmap (foldMap convertBlock) bs
+  List _ _p _ -> undefined
+  Nestable _ _p _ -> undefined
   DanglingBlockPrefix _ -> mempty
 
 convertInline :: Inline -> Pandoc.Inlines

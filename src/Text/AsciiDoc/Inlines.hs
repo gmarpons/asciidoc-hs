@@ -228,7 +228,7 @@ nonGapSequenceP =
 
 openP :: Monad m => [Mark] -> Parser m Mark
 openP ms = do
-  Parsec.label (pure ()) "M_>"
+  Parsec.label (pure ()) "M_<"
   mark <- choice $ Parsec.try . markP <$> ms
   -- What follows is not part of the EBNF description of the language, but it's
   -- easier to put it here than create a specific function for it.
@@ -242,7 +242,7 @@ closeP openMark = do
   -- Passing a mark to this function is redundant, but the openP/closeP
   -- connection makes the interface more clear for callers. It can also be used
   -- to (run-time) check for some programming errors.
-  Parsec.label (pure ()) $ "M_<: " ++ show openMark
+  Parsec.label (pure ()) $ "M_>: " ++ show openMark
   let closeMark = closingMarkOf openMark
   _ <- markP closeMark
   -- What follows is not part of the EBNF description of the language, but it's
