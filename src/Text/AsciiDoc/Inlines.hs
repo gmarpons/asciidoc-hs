@@ -55,7 +55,7 @@ import Control.Monad.Combinators hiding
 import Control.Monad.Combinators.NonEmpty (some)
 import Data.Char (isAlphaNum, isSpace)
 import Data.Generics (Data, Typeable)
-import Data.List.NonEmpty (NonEmpty (..))
+import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as NE
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -143,6 +143,12 @@ data Inline
 --  | InlineMacro Text
 --  | EscapedSymbol Text
 --  | DoubleEscapedSymbol Text
+
+instance Semigroup Inline where
+  InlineSeq x <> InlineSeq y = InlineSeq (x <> y)
+  InlineSeq x <> b = InlineSeq $ x <> (b :| [])
+  a <> InlineSeq y = InlineSeq $ a <| y
+  a <> b = InlineSeq $ a :| [b]
 
 -- EBNF grammar non-terminal symbols  ------------------------------------------
 

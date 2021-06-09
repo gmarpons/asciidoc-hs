@@ -45,7 +45,7 @@ data Metadata a = Metadata
     metadataNamedAttributes :: Map.Map Text Text,
     metadataRoleNamedAttribute :: Maybe (Last [Text])
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 instance Semigroup (Metadata a) where
   x <> y =
