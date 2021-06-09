@@ -26,6 +26,7 @@ module Text.AsciiDoc.Pandoc
   )
 where
 
+import Data.List.NonEmpty as NE (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.Semigroup (Last (Last))
 import Data.Text (Text)
@@ -74,7 +75,7 @@ convertBlock = \case
     -- "role=..." syntax. See Monoid Metadata instance.
     let m = toMetadata p
      in Pandoc.divWith (toAttr $ m {metadataRoles = "paragraph" : metadataRoles m}) $
-          prependTitleDiv m $
+          prependTitleDiv (fmap parseInline m) $
             Pandoc.para $ convertInline i
   -- Divergence from Asciidoctor: we add the possible title in the section
   -- prefix to the header of the section, and not to the first non-header block
@@ -83,7 +84,7 @@ convertBlock = \case
     let m = toMetadata p
         mSect = m {metadataRoles = T.pack ("sect" ++ show (level + 1)) : metadataRoles m}
      in Pandoc.divWith (toAttr mSect) $
-          prependTitleDiv m $
+          prependTitleDiv (fmap parseInline m) $
             Pandoc.headerWith mempty (level + 1) (convertInline i)
               <> foldMap convertBlock bs
   -- TODO. Compute Section's (nesting) before converting. The following case
@@ -92,14 +93,33 @@ convertBlock = \case
   SectionHeader p level i ->
     let m = toMetadata p
      in Pandoc.divWith (toAttr m) $
-          prependTitleDiv m $
+          prependTitleDiv (fmap parseInline m) $
             Pandoc.headerWith mempty (level + 1) (convertInline i)
-  List (Unordered Nothing) p bs ->
+  List (Unordered Nothing) p bss ->
     let m = toMetadata p
      in Pandoc.divWith (toAttr $ m {metadataRoles = "ulist" : metadataRoles m}) $
-          prependTitleDiv m $
-            Pandoc.bulletList $ NE.toList $ fmap (foldMap convertBlock) bs
+          prependTitleDiv (fmap parseInline m) $
+            Pandoc.bulletList $ NE.toList $ fmap (foldMap convertBlock) bss
+  -- TODO. Cover other list types
   List _ _p _ -> undefined
+  Nestable Example p bs ->
+    let m = toMetadata p
+        -- TODO. This prefix should come from a (localized) variable (L10N)
+        prefix = parseInline $ MarkupLine "Example 1. " :| []
+        title = fmap ((prefix <>) . parseInline) <$> metadataTitle m
+     in Pandoc.divWith (toAttr $ m {metadataRoles = "exampleblock" : metadataRoles m}) $
+          prependTitleDiv (m {metadataTitle = title}) $
+            Pandoc.divWith (toAttr $ mempty {metadataRoles = ["content"]}) $
+              foldMap convertBlock bs
+  Nestable Sidebar p bs ->
+    let m = toMetadata p
+     in Pandoc.divWith (toAttr $ m {metadataRoles = "sidebarblock" : metadataRoles m}) $
+          Pandoc.divWith (toAttr $ mempty {metadataRoles = ["content"]}) $
+            -- In contrast with Nestable Example, here the title is part of the
+            -- content, to mimic Asciidoctor
+            prependTitleDiv (fmap parseInline m) $
+              foldMap convertBlock bs
+  -- TODO. Cover other nestable types
   Nestable _ _p _ -> undefined
   DanglingBlockPrefix _ -> mempty
 
@@ -179,10 +199,10 @@ toAttr m = (identifier, classes, keyvals)
 
 -- | In case the metadata contains a block title, this function prepends a div
 -- with the title to the provided 'Blocks' value.
-prependTitleDiv :: Metadata UnparsedInline -> Pandoc.Blocks -> Pandoc.Blocks
+prependTitleDiv :: Metadata Inline -> Pandoc.Blocks -> Pandoc.Blocks
 prependTitleDiv m = case metadataTitle m of
   Nothing -> id
-  Just (Last t) ->
+  Just (Last i) ->
     mappend $
       Pandoc.divWith (toAttr $ mempty {metadataRoles = ["title"]}) $
-        Pandoc.plain (convertInline (parseInline t))
+        Pandoc.plain $ convertInline i
