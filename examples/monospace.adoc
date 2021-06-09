@@ -1,0 +1,5 @@
+= Example with monospace
+
+== `Monospace` can be used in section headers
+
+This is a paragraph with `some words in monospace and in *bold monospace*`.

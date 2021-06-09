@@ -1,0 +1,19 @@
+.monospace {
+  font-family: "Droid Sans Mono", "DejaVu Sans Mono", monospace;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.9);
+  font-size: 1em;
+}
+
+:not(pre):not([class^=L]) > .monospace {
+  font-size: 0.9375em;
+  font-style: normal !important;
+  letter-spacing: 0;
+  padding: 0.1em 0.5ex;
+  word-spacing: -0.15em;
+  background: #f7f7f8;
+  -webkit-border-radius: 4px;
+  border-radius: 4px;
+  line-height: 1.45;
+  text-rendering: optimizeSpeed;
+}
