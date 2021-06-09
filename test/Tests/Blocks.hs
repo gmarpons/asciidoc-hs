@@ -18,9 +18,14 @@ import Text.AsciiDoc.Metadata
 import Text.AsciiDoc.UnparsedInline
 import qualified Text.Parsec as Parsec
 
-parseDocument :: [Text] -> IO [Block UnparsedInline]
+parseDocument :: [Text] -> IO (Document UnparsedInline)
 parseDocument t = case parseTest documentP t of
-  Right prefix -> pure prefix
+  Right x -> pure x
+  Left parseError -> assertFailure $ "Parser fails: " <> show parseError
+
+parseBlocks :: [Text] -> IO [Block UnparsedInline]
+parseBlocks t = case parseTest blocksP t of
+  Right x -> pure x
   Left parseError -> assertFailure $ "Parser fails: " <> show parseError
 
 parseTest :: Parser Identity a -> [Text] -> Either Parsec.ParseError a
@@ -31,7 +36,8 @@ blockUnitTests :: TestTree
 blockUnitTests =
   testGroup
     "block unit tests"
-    [ blockCornerCaseUnitTests,
+    [ documentUnitTests,
+      blockCornerCaseUnitTests,
       paragraphUnitTests,
       sectionHeaderUnitTests,
       danglingBlockPrefixUnitTests,
@@ -42,18 +48,100 @@ blockUnitTests =
       commentUnitTests
     ]
 
-blockCornerCaseUnitTests :: TestTree
-blockCornerCaseUnitTests =
+documentUnitTests :: TestTree
+documentUnitTests =
   testGroup
-    "block corner case unit tests"
+    "document unit tests"
     [ testCase "empty document" $ do
         p <-
           parseDocument
             []
-        p `shouldBe` [],
-      testCase "single blank line" $ do
+        p `shouldBe` Document Nothing [],
+      testCase "single document title" $ do
         p <-
           parseDocument
+            [ "= Foo"
+            ]
+        p
+          `shouldBe` Document
+            (Just (DocumentHeader [] 0 (MarkupLine "Foo" :| [])))
+            [],
+      testCase "single document title with prefix" $ do
+        p <-
+          parseDocument
+            [ "[[Foo]]",
+              "= Bar"
+            ]
+        p
+          `shouldBe` Document
+            (Just (DocumentHeader [MetadataItem (BlockId "Foo")] 0 (MarkupLine "Bar" :| [])))
+            [],
+      testCase "document title with prefix followed by paragraph" $ do
+        p <-
+          parseDocument
+            [ "[[Foo]]",
+              "= Bar",
+              "Baz"
+            ]
+        p
+          `shouldBe` Document
+            (Just (DocumentHeader [MetadataItem (BlockId "Foo")] 0 (MarkupLine "Bar" :| [])))
+            [Paragraph [] (MarkupLine "Baz" :| [])],
+      testCase "document title followed by empty line and paragraph" $ do
+        p <-
+          parseDocument
+            [ "= Foo",
+              "",
+              "Bar"
+            ]
+        p
+          `shouldBe` Document
+            (Just (DocumentHeader [] 0 (MarkupLine "Foo" :| [])))
+            [Paragraph [] (MarkupLine "Bar" :| [])],
+      testCase "document title with level 1 followed by paragraph" $ do
+        p <-
+          parseDocument
+            [ "== Foo",
+              "Bar"
+            ]
+        p
+          `shouldBe` Document
+            (Just (DocumentHeader [] 1 (MarkupLine "Foo" :| [])))
+            [Paragraph [] (MarkupLine "Bar" :| [])],
+      testCase "document with no title and a paragraph" $ do
+        p <-
+          parseDocument
+            [ "Foo"
+            ]
+        p
+          `shouldBe` Document
+            Nothing
+            [Paragraph [] (MarkupLine "Foo" :| [])],
+      testCase "single dangling block prefix" $ do
+        p <- parseDocument ["[[Foo]]"]
+        p
+          `shouldBe` Document Nothing [DanglingBlockPrefix [MetadataItem (BlockId "Foo")]],
+      testCase "dangling block prefix at eof and after empty line" $ do
+        p <-
+          parseDocument
+            [ "",
+              "[[Foo]]"
+            ]
+        p `shouldBe` Document Nothing [DanglingBlockPrefix [MetadataItem (BlockId "Foo")]]
+    ]
+
+blockCornerCaseUnitTests :: TestTree
+blockCornerCaseUnitTests =
+  testGroup
+    "block corner case unit tests"
+    [ testCase "empty block list" $ do
+        p <-
+          parseBlocks
+            []
+        p `shouldBe` [],
+      testCase "single empty line" $ do
+        p <-
+          parseBlocks
             [ ""
             ]
         p `shouldBe` []
@@ -65,27 +153,27 @@ paragraphUnitTests =
     "paragraph unit tests"
     [ testCase "one line paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo"
             ]
         p `shouldBe` [Paragraph [] (MarkupLine "Foo" :| [])],
       testCase "two lines paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               "Bar"
             ]
         p `shouldBe` [Paragraph [] (MarkupLine "Foo" :| [MarkupLine "Bar"])],
-      testCase "paragraph followed by blank line" $ do
+      testCase "paragraph followed by empty line" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               ""
             ]
         p `shouldBe` [Paragraph [] (MarkupLine "Foo" :| [])],
       testCase "paragraph with indented following lines" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               "  Bar",
               " Baz"
@@ -93,7 +181,7 @@ paragraphUnitTests =
         p `shouldBe` [Paragraph [] (MarkupLine "Foo" :| [MarkupLine "  Bar", MarkupLine " Baz"])],
       testCase "two paragraphs" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               "",
               "Bar"
@@ -104,7 +192,7 @@ paragraphUnitTests =
                      ],
       testCase "paragraph with block prefix" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ ".Foo",
               "// Comment",
               "[Foo#Bar%Baz]",
@@ -118,9 +206,9 @@ paragraphUnitTests =
                          ]
                          (MarkupLine "Foo" :| [])
                      ],
-      testCase "paragraph with block prefix containing blank lines" $ do
+      testCase "paragraph with block prefix containing empty lines" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ ".Foo",
               "",
               "[Foo#Bar%Baz]",
@@ -136,7 +224,7 @@ paragraphUnitTests =
                      ],
       testCase "paragraph followed by dangling block prefix" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               "",
               ".Foo"
@@ -151,7 +239,7 @@ paragraphUnitTests =
                      ],
       testCase "paragraph with second line resembling block title" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               ".Bar"
             ]
@@ -168,7 +256,7 @@ sectionHeaderUnitTests =
     "section header unit tests"
     [ testCase "level 0 section header" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "= Foo"
             ]
         p
@@ -179,7 +267,7 @@ sectionHeaderUnitTests =
                      ],
       testCase "level 1 section header" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "== Foo"
             ]
         p
@@ -190,7 +278,7 @@ sectionHeaderUnitTests =
                      ],
       testCase "level 2 section header" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "=== Foo"
             ]
         p
@@ -201,7 +289,7 @@ sectionHeaderUnitTests =
                      ],
       testCase "section header with two words" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "= Foo bar"
             ]
         p
@@ -212,7 +300,7 @@ sectionHeaderUnitTests =
                      ],
       testCase "section header beginning with space" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "=  Foo"
             ]
         p
@@ -223,7 +311,7 @@ sectionHeaderUnitTests =
                      ],
       testCase "section header followed by paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "= Foo",
               "Bar"
             ]
@@ -234,9 +322,9 @@ sectionHeaderUnitTests =
                          (MarkupLine "Foo" :| []),
                        Paragraph [] (MarkupLine "Bar" :| [])
                      ],
-      testCase "section header followed by blank line and paragraph" $ do
+      testCase "section header followed by empty line and paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "= Foo",
               "",
               "Bar"
@@ -250,7 +338,7 @@ sectionHeaderUnitTests =
                      ],
       testCase "section header with block prefix" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ ".Foo",
               "= Foo"
             ]
@@ -262,7 +350,7 @@ sectionHeaderUnitTests =
                      ],
       testCase "section header followed by paragraph with block prefix" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "= Foo",
               ".Bar",
               "Bar"
@@ -278,7 +366,7 @@ sectionHeaderUnitTests =
                      ],
       testCase "discrete section header" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "[discrete]",
               "= Foo"
             ]
@@ -303,7 +391,7 @@ sectionHeaderUnitTests =
       -- TODO. Must change when indented literal paragraphs are implemented.
       testCase "false section header (space before '=')" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ " = Foo"
             ]
         p `shouldBe` [Paragraph [] (MarkupLine " = Foo" :| [])]
@@ -313,19 +401,9 @@ danglingBlockPrefixUnitTests :: TestTree
 danglingBlockPrefixUnitTests =
   testGroup
     "dangling block prefix unit tests"
-    [ testCase "single dangling block prefix" $ do
-        p <- parseDocument ["[[Foo]]"]
-        p `shouldBe` [DanglingBlockPrefix [MetadataItem (BlockId "Foo")]],
-      testCase "dangling block prefix at eof and after blank line" $ do
+    [ testCase "dangling block prefix at eof and after paragraph" $ do
         p <-
-          parseDocument
-            [ "",
-              "[[Foo]]"
-            ]
-        p `shouldBe` [DanglingBlockPrefix [MetadataItem (BlockId "Foo")]],
-      testCase "dangling block prefix at eof and after paragraph" $ do
-        p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               "[[Foo]]"
             ]
@@ -337,7 +415,7 @@ danglingBlockPrefixUnitTests =
                      ],
       testCase "dangling block prefix at end of example block" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "====",
               "Foo",
               "",
@@ -360,7 +438,7 @@ nestableUnitTests =
     "nestable block unit tests"
     [ testCase "simple example block" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "====",
               "Foo",
               "===="
@@ -373,7 +451,7 @@ nestableUnitTests =
                      ],
       testCase "simple sidebar block" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "****",
               "Foo",
               "****"
@@ -386,7 +464,7 @@ nestableUnitTests =
                      ],
       testCase "example block containing two paragraphs" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "====",
               "Foo",
               "",
@@ -403,7 +481,7 @@ nestableUnitTests =
                      ],
       testCase "example block with block title" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ ".Foo",
               "====",
               "Bar",
@@ -417,7 +495,7 @@ nestableUnitTests =
                      ],
       testCase "sidebar nested into example block" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "====",
               "****",
               "Bar",
@@ -437,7 +515,7 @@ nestableUnitTests =
                      ],
       testCase "sidebar nested into example block and following paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "====",
               "Foo",
               "****",
@@ -457,9 +535,9 @@ nestableUnitTests =
                              ]
                          ]
                      ],
-      testCase "sidebar nested into example block and following blank line" $ do
+      testCase "sidebar nested into example block and following empty line" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "====",
               "",
               "****",
@@ -480,7 +558,7 @@ nestableUnitTests =
                      ],
       testCase "example block nested into example block and following paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "====",
               "Foo",
               "======",
@@ -502,7 +580,7 @@ nestableUnitTests =
                      ],
       testCase "non-closed sidebar nested into example block" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "====",
               "Foo",
               "****",
@@ -523,7 +601,7 @@ nestableUnitTests =
                      ],
       testCase "non-closed example block nested into example block" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "====",
               "Foo",
               "======",
@@ -550,7 +628,7 @@ unorderedListUnitTests =
     "unordered list unit tests"
     [ testCase "simple unordered list using '-' (hyphen)" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "- Foo",
               "- Bar",
               "- Baz"
@@ -567,7 +645,7 @@ unorderedListUnitTests =
                      ],
       testCase "simple unordered list using '*' (asterisk)" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "* Bar",
               "* Baz"
@@ -584,7 +662,7 @@ unorderedListUnitTests =
                      ],
       testCase "unordered list with irregular indentation" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "  * Bar",
               " * Baz"
@@ -601,7 +679,7 @@ unorderedListUnitTests =
                      ],
       testCase "unordered list with indented first item" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               "",
               "  * Bar",
@@ -619,7 +697,7 @@ unorderedListUnitTests =
                      ],
       testCase "unordered list with irregular line spacing" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "",
               "",
@@ -639,7 +717,7 @@ unorderedListUnitTests =
                      ],
       testCase "unordered list with multi-line paragraphs" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "Bar",
               "* Baz",
@@ -655,7 +733,7 @@ unorderedListUnitTests =
                      ],
       testCase "unordered list item with literal second paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "",
               " Bar"
@@ -679,7 +757,7 @@ unorderedListUnitTests =
                      ],
       testCase "two unordered lists separated by a paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "",
               "Bar",
@@ -702,7 +780,7 @@ unorderedListUnitTests =
                      ],
       testCase "unordered list followed up by consecutive example block" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "====",
               "Bar",
@@ -726,7 +804,7 @@ nestedListsUnitTests =
     "nested lists unit tests"
     [ testCase "unordered list using '-' (hyphen) nested into list using '*' (asterisk)" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "- Bar",
               "- Baz",
@@ -750,7 +828,7 @@ nestedListsUnitTests =
                      ],
       testCase "nested unordered lists using increasing number of '*' (asterisk)" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "** Bar",
               "*** Baz",
@@ -778,9 +856,9 @@ nestedListsUnitTests =
                              :| [Paragraph [] (MarkupLine "Qux" :| []) :| []]
                          )
                      ],
-      testCase "nested unordered lists with blank lines interspersed" $ do
+      testCase "nested unordered lists with empty lines interspersed" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "",
               "** Bar",
@@ -813,7 +891,7 @@ nestedListsUnitTests =
                      ],
       testCase "nested unordered lists using unordered number of '*' (asterisk)" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "** Foo",
               "* Bar",
               "*** Baz",
@@ -843,7 +921,7 @@ nestedListsUnitTests =
                      ],
       testCase "nested unordered list with multi-line paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "- Bar",
               "Baz",
@@ -867,7 +945,7 @@ nestedListsUnitTests =
                      ],
       testCase "(DVB001) nested unordered list with block prefixes" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "[.red]",
               ".FooFoo",
               "* Foo",
@@ -905,9 +983,9 @@ nestedListsUnitTests =
                          ((Paragraph [] (MarkupLine "Baz" :| []) :| []) :| [])
                      ],
       -- Identical result to the previous test case.
-      testCase "(DVB001) nested unordered list with block prefixes and some blank lines" $ do
+      testCase "(DVB001) nested unordered list with block prefixes and some empty lines" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "[.red]",
               ".FooFoo",
               "",
@@ -955,7 +1033,7 @@ listContinuationUnitTests =
     "list continuation unit tests"
     [ testCase "list continuation (paragraph), followed by another list item" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "+",
               "Bar",
@@ -973,7 +1051,7 @@ listContinuationUnitTests =
                      ],
       testCase "two list continuations (paragraph), followed by another list item" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "+",
               "Bar",
@@ -995,7 +1073,7 @@ listContinuationUnitTests =
                      ],
       testCase "list continuation (paragraph) with a block prefix" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "+",
               "[.red]",
@@ -1016,7 +1094,7 @@ listContinuationUnitTests =
                      ],
       testCase "list continuation (example block), followed by another list item" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "+",
               "====",
@@ -1036,7 +1114,7 @@ listContinuationUnitTests =
                      ],
       testCase "list continuation into a nested unordered list" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "** Bar",
               "+",
@@ -1063,10 +1141,10 @@ listContinuationUnitTests =
                      ],
       testCase "dangling list continuation marker in outermost list" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "+",
-              "", -- Asciidoctor allows this optional blank line here
+              "", -- Asciidoctor allows this optional empty line here
               "",
               "Bar"
             ]
@@ -1079,7 +1157,7 @@ listContinuationUnitTests =
                      ],
       testCase "dangling list continuation marker into a nested unordered list" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "** Bar",
               "+",
@@ -1104,7 +1182,7 @@ listContinuationUnitTests =
                      ],
       testCase "(DVB002) broken list continuation attempt in outermost list" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "",
               "+",
@@ -1119,7 +1197,7 @@ listContinuationUnitTests =
                      ],
       testCase "(DVB002) broken list continuation attempt in nested list" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               "** Bar",
               "",
@@ -1143,7 +1221,7 @@ listContinuationUnitTests =
                      ],
       testCase "line break that resembles list continuation" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "* Foo",
               " +",
               "Bar"
@@ -1174,7 +1252,7 @@ commentUnitTests =
     "comment unit tests"
     [ testCase "dangling block comment" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "////",
               "Foo",
               "////"
@@ -1183,7 +1261,7 @@ commentUnitTests =
           `shouldBe` [DanglingBlockPrefix [Comment (BlockComment ["Foo"])]],
       testCase "dangling line comment sequence" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "//Foo",
               "// Bar"
             ]
@@ -1193,7 +1271,7 @@ commentUnitTests =
                      ],
       testCase "block comment before paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "////",
               "Foo",
               "////",
@@ -1206,7 +1284,7 @@ commentUnitTests =
                      ],
       testCase "block comment before paragraph, with redundant space" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "//// ",
               "Foo",
               "//// ",
@@ -1219,7 +1297,7 @@ commentUnitTests =
                      ],
       testCase "block comment before paragraph, separated by blank line" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "////",
               "Foo",
               "////",
@@ -1233,7 +1311,7 @@ commentUnitTests =
                      ],
       testCase "empty block comment before paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "////",
               "////",
               "Foo"
@@ -1245,7 +1323,7 @@ commentUnitTests =
                      ],
       testCase "empty line comment before paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "//",
               "Foo"
             ]
@@ -1256,7 +1334,7 @@ commentUnitTests =
                      ],
       testCase "block comment with multiple pseudo-paragraphs" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "////",
               "Foo",
               "",
@@ -1271,7 +1349,7 @@ commentUnitTests =
                      ],
       testCase "line comment sequence before paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "//Foo",
               "// Bar",
               "Baz"
@@ -1283,7 +1361,7 @@ commentUnitTests =
                      ],
       testCase "line comment inside paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               "// Bar",
               "Baz"
@@ -1295,7 +1373,7 @@ commentUnitTests =
                      ],
       testCase "line comment inside paragraph and after paragraph" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "Foo",
               "// Bar",
               "Baz",
@@ -1313,7 +1391,7 @@ commentUnitTests =
                      ],
       testCase "line comment sequence before section header" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "//Foo",
               "// Bar",
               "== Baz"
@@ -1326,7 +1404,7 @@ commentUnitTests =
                      ],
       testCase "block comment followed by line comment sequence" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "////",
               "Foo",
               "",
@@ -1343,7 +1421,7 @@ commentUnitTests =
                      ],
       testCase "line comment sequence followed by block comment" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "// Foo",
               "//Bar",
               "////",
@@ -1360,7 +1438,7 @@ commentUnitTests =
                      ],
       testCase "block comment with more than four '/' (slash)" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "/////",
               "Foo",
               "////",
@@ -1377,7 +1455,7 @@ commentUnitTests =
                      ],
       testCase "dangling non-closed block comment" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "////",
               "Foo",
               "",
@@ -1389,7 +1467,7 @@ commentUnitTests =
                      ],
       testCase "bad block comment opening, with three '/' (slashes)" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "///",
               "Foo",
               "////"
@@ -1400,7 +1478,7 @@ commentUnitTests =
                      ],
       testCase "bad line comment, with three '/' (slashes)" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ "///Foo",
               "Bar"
             ]
@@ -1408,7 +1486,7 @@ commentUnitTests =
           `shouldBe` [Paragraph [] (MarkupLine "///Foo" :| [MarkupLine "Bar"])],
       testCase "bad block comment opening, preceded by space" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ " ////",
               "Foo",
               "////"
@@ -1419,7 +1497,7 @@ commentUnitTests =
                      ],
       testCase "bad line comment opening, preceded by space" $ do
         p <-
-          parseDocument
+          parseBlocks
             [ " //Foo",
               "Bar"
             ]

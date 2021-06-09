@@ -32,9 +32,12 @@ module Text.AsciiDoc.Blocks
     BlockPrefixItem (..),
     UnparsedBlockPrefix,
     Block (..),
+    DocumentHeader (..),
+    Document (..),
 
     -- * Parsers
     documentP,
+    documentHeaderP,
     blocksP,
     blockP,
     blockPrefixP,
@@ -219,7 +222,8 @@ instance ToMetadata (BlockPrefixItem UnparsedInline) UnparsedInline where
 type UnparsedBlockPrefix = [BlockPrefixItem UnparsedInline]
 
 -- | A Block consists, syntactically, of one or more contiguous and complete
--- lines of text. Some block types can contain other blocks.
+-- lines of text.
+-- Some block types can contain other blocks.
 data Block a
   = -- | Regular paragraph.
     Paragraph UnparsedBlockPrefix a
@@ -259,6 +263,20 @@ data Block a
     DanglingBlockPrefix UnparsedBlockPrefix
   deriving stock (Eq, Show, Functor)
 
+data DocumentHeader a
+  = DocumentHeader UnparsedBlockPrefix HeaderLevel a
+  deriving stock (Eq, Show, Functor)
+
+data Document a
+  = Document (Maybe (DocumentHeader a)) [Block a]
+  deriving stock (Eq, Show, Functor)
+
+-- Document {
+--   docPrefix :: UnparsedBlockPrefix,
+--   docTitle :: a,
+--   docBlocks :: [Block UnparsedInline]
+-- }
+
 -- | Custom parser state for the parser for 'Block's.
 data State = State
   { -- | A stack of open 'Nestable' blocks.
@@ -293,8 +311,21 @@ blockParserInitialState =
 
 type Parser m = Parsec.ParsecT [Text] State m
 
-documentP :: Monad m => Parser m [Block UnparsedInline]
-documentP = option () includeP *> initialBlankLinesP *> blocksP
+documentP :: Monad m => Parser m (Document UnparsedInline)
+documentP =
+  Document
+    <$ option () includeP
+    <* initialBlankLinesP
+    <*> optional (Parsec.try documentHeaderP <?> "document header")
+    <* many blankLineP
+    <*> blocksP
+    <* Parsec.eof
+
+documentHeaderP :: Monad m => Parser m (DocumentHeader UnparsedInline)
+documentHeaderP = do
+  prefix <- option [] (NE.toList <$> blockPrefixP)
+  (level, i) <- rawSectionHeaderP
+  pure $ DocumentHeader prefix level i
 
 blocksP :: Monad m => Parser m [Block UnparsedInline]
 blocksP = many (blockP []) <?> "blocks"
@@ -414,19 +445,20 @@ sectionHeaderP prefix = do
     (_ : _, Just (Last t)) | t /= "discrete" -> empty
     -- In any other case: parse as a section header.
     _ -> do
-      (level, text) <- sectionHeaderP'
+      (level, text) <- rawSectionHeaderP
       _ <- many blankLineP
       pure $ SectionHeader prefix level text
   where
-    sectionHeaderP' :: Monad m => Parser m (HeaderLevel, UnparsedInline)
-    sectionHeaderP' =
-      (\(_c :* n, x) -> (n - 1, MarkupLine x :| []))
-        <$> lineP
-          ( (,)
-              <$> choice (LP.runOfN 1 [EqualsSignH]) <* some space
-                <*> (LP.satisfy (not . isSpace) <> LP.anyRemainder)
-          )
     style = metadataStyle $ toMetadata @_ @UnparsedInline $ prefix
+
+rawSectionHeaderP :: Monad m => Parser m (HeaderLevel, UnparsedInline)
+rawSectionHeaderP =
+  (\(_c :* n, x) -> (n - 1, MarkupLine x :| []))
+    <$> lineP
+      ( (,)
+          <$> choice (LP.runOfN 1 [EqualsSignH]) <* some space
+            <*> (LP.satisfy (not . isSpace) <> LP.anyRemainder)
+      )
 
 listP ::
   (Monad m) =>
