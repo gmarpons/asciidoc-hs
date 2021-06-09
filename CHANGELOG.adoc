@@ -1,13 +1,14 @@
 = Revision history for asciidoc-hs
 
-== 0.0.0.0 -- 2021-06-06
+== 0.0.0.0 -- 2021-06-10
 
 * First version.
 * Basic paragraphs.
 * Basic, grammar based, inline parsing.
 * Conversion to JSON Pandoc.
-* (Nested) bold, italic and monospace formatting.
-* Highlight formatting anc custom inline style.
+* (Nested) bold, italic formatting.
+* Monospace formatting for HTML output (through support in CSS).
+* Highlight formatting and custom inline style.
 * Constrained and unconstrained formatting.
 * Element attributes: positional, named, shorthand syntax.
 * ID attribute, role attribute, optional attribute.
@@ -17,3 +18,4 @@
 * Section headers and levels.
 * Discrete sections.
 * Unordered lists (with simple list continuations).
+* Document title.

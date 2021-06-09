@@ -40,10 +40,10 @@ import qualified Text.Pandoc.Builder as Pandoc
 import Text.Pandoc.Definition (Pandoc)
 import qualified Text.Parsec as Parsec
 
-type Document = [Block Inline]
+-- type Document = [Block Inline]
 
-parseInlines :: [Block UnparsedInline] -> Document
-parseInlines = (fmap . fmap) parseInline
+parseInlines :: Document UnparsedInline -> Document Inline
+parseInlines = fmap parseInline
 
 parseInline :: UnparsedInline -> Inline
 parseInline x =
@@ -60,12 +60,49 @@ parseInline x =
       MarkupLine t -> t
       CommentLine _ -> ""
 
-convertDocument :: Document -> Pandoc
-convertDocument bs =
-  -- TODO. Document title is a stub
-  Pandoc.setTitle "Testing Document Title" $
+convertDocument :: Document Inline -> Pandoc
+convertDocument (Document mHeader bs) =
+  Pandoc.setMeta "pagetitle" pageTitle $
     Pandoc.doc $
-      foldMap convertBlock bs
+      -- Divergence from Asciidoctor: the following div with role "article" is
+      -- not necessary in Asciidoctor because "article" role (and other metadata
+      -- in @metadata@) is assigned to the <body> tag.
+      Pandoc.divWith
+        (toAttr $ articleMetadata {metadataRoles = "article" : metadataRoles articleMetadata})
+        ( Pandoc.divWith
+            (toAttr $ mempty {metadataIds = ["header"]})
+            -- Spurious @plain@ block needed to avoid Pandoc fuse <div> and <h*>
+            (Pandoc.plain " " <> headerContent)
+            <> Pandoc.divWith
+              (toAttr $ mempty {metadataIds = ["content"]})
+              -- Spurious @plain@ block needed to avoid Pandoc fuse <div> and <h*>
+              (Pandoc.plain " " <> contentTitle <> foldMap convertBlock bs)
+        )
+  where
+    -- TODO. Var sectionMetadata will be used when correct section nesting is
+    -- computed
+    (pageTitle, articleMetadata, _sectionMetadata, headerContent, contentTitle) =
+      case mHeader of
+        Just (DocumentHeader p level i) ->
+          let m = toMetadata p :: Metadata UnparsedInline
+              t = convertInline i
+              h = Pandoc.header (level + 1) t
+           in if level == 0
+                then
+                  ( t,
+                    m,
+                    mempty :: Metadata UnparsedInline,
+                    h,
+                    mempty
+                  )
+                else
+                  ( t,
+                    m {metadataIds = [], metadataRoles = []},
+                    mempty {metadataRoles = metadataRoles m},
+                    mempty,
+                    Pandoc.divWith (toAttr $ mempty {metadataIds = metadataIds m}) h
+                  )
+        Nothing -> ("Untitled", mempty, mempty, mempty, mempty)
 
 convertBlock :: Block Inline -> Pandoc.Blocks
 convertBlock = \case
@@ -180,6 +217,8 @@ convertInline = \case
   --    that need it.
   --
   -- 3) Convert inlines into a Text with no markup applied.
+  --
+  -- TODO. Find a solution that can work for other writers than HTML.
   StyledText Monospace as _ inlines _ ->
     Pandoc.spanWith (toAttr $ mempty {metadataRoles = ["monospace"]} <> toMetadata as) $
       foldMap convertInline inlines
@@ -198,7 +237,7 @@ toAttr m = (identifier, classes, keyvals)
     keyvals = []
 
 -- | In case the metadata contains a block title, this function prepends a div
--- with the title to the provided 'Blocks' value.
+-- with the title to the provided 'Pandoc.Blocks' value.
 prependTitleDiv :: Metadata Inline -> Pandoc.Blocks -> Pandoc.Blocks
 prependTitleDiv m = case metadataTitle m of
   Nothing -> id
