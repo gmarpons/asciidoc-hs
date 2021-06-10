@@ -10,9 +10,21 @@ on:
     - cron: '0 0 * * 0'
 
 jobs:
-  build:
+  ormolu:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Ormolu
+      uses: mrkkrp/ormolu-action@v2
+      with:
+        extra-args: --ghc-opt -XTypeApplications
+
+  cabal:
     name: ${{ matrix.os }} / ghc ${{ matrix.ghc }}
     runs-on: ${{ matrix.os }}
+    needs: ormolu
     strategy:
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
