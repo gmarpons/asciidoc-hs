@@ -1,5 +1,5 @@
-= asciidoc-hs
-
+= Asciidoc-hs
+:toc: macro
 ifndef::env-github[]
 :icons: font
 :outfilesuffix: .adoc
@@ -15,37 +15,142 @@ endif::[]
 :url-repo: https://github.com/gmarpons/asciidoc-hs
 
 WARNING: This project is in its early stages.
-Don't expect to use it in anything relevant yet.
+Don't expect to be able to use it in anything relevant, yet.
 
 `asciidoc-hs` is a parser for the lightweight markup language https://docs.asciidoctor.org/asciidoc/latest/[AsciiDoc] that can be used as a https://pandoc.org/[Pandoc] front-end.
-
 It draws on https://github.com/jgm/commonmark-hs[`commonmark-hs`] and is written in pure Haskell.
 
-ifdef::env-github[]
 image:https://github.com/gmarpons/asciidoc-hs/workflows/CI/badge.svg[Build Status (GitHub Actions),link={url-repo}/actions]
-endif::[]
 
-== Planned Features
+toc::[]
 
-- [ ] Full compatibility with https://asciidoctor.org[Asciidoctor] and with the result of the  https://www.eclipse.org/org/workinggroups/asciidoc-charter.php[AsciiDoc standardization process] (long-term goal).
-- [ ] Generates Pandoc JSON. Other back-ends can be easily added.
-- [ ] Complete and precise source mapping information can be attached to the output.
-- [ ] Modular and extensible design: some syntactic features can be disabled and others can be easily added.
-- [ ] Scriptable in a similar way to Pandoc, but using and AST/DOM that is specific to AsciiDoc and fully supports the result of the standardization effort (long-term goal).
-- [ ] Can be used for (lossless) source-to-source transformations (long-term goal).
+== Mission
+
+The main goal of this project is to become a reasonably complete implementation of the AsciiDoc language and to allow Pandoc to read AsciiDoc documents.
+
+We want to read AsciiDoc as it's used today (mainly in its https://docs.asciidoctor.org/asciidoctor/latest/[Asciidoctor] variant), and also support the https://www.eclipse.org/org/workinggroups/asciidoc-charter.php[AsciiDoc Standard] when it arrives.
+We're following the standardization process closely and we'll try to contribute to it if we see the opportunity.
+
+The supported features can be found in our https://github.com/gmarpons/asciidoc-hs/wiki/AsciiDoc-Compatibility-Matrix[compatibility matrix], currently based on Asciidoctor's feature list.
+
+Secondary goals of the project are (but don't expect any roadmap or timeline at the moment):
+
+* Be used as infrastructure for building advanced editor and IDE features (e.g., linters and live previewers).
+This means to be able to track precise source mapping information, among others.
+
+* Be scriptable in a similar way to Pandoc, but using and AST/DOM that is specific to AsciiDoc and fully supports its semantic richness.
+
+* Enable source-to-source transformations, including exact-print for those parts not explicitly modified by the scripts (a.k.a. lossless transformation).
+
+* End up being distributed together with Pandoc, as a regular Pandoc Reader.
 
 == Install
 
-_Comming soon_.
+You'll need to build from source at the moment.
+I expect to upload the package to Hackage soon.
+
+If you don't have Haskell installed in your system, try install GHC and Cabal with https://www.haskell.org/ghcup/[`ghcup`], and follow instructions for Cabal below.
+
+`asciidoc-hs` has been tested with GHC 8.8 and 8.10, and Cabal 3.4.
+
+=== Using Cabal
+
+First, clone the repository:
+
+[subs=attributes]
+  $ git clone {url-repo}.git
+  $ cd asciidoc-hs
+
+Then, build using `cabal`:
+
+  $ cabal build
+
+You can optionally copy the resulting executable under a location of your choice (that should be under the `PATH` environment variable):
+
+  $ cp "$(cabal exec --verbose=0 --offline sh -- -c 'command -v asciidoc-hs')" ~/.local/bin/asciidoc-hs
+
+=== Using Stack
+
+First, clone the repository:
+
+[subs=attributes]
+  $ git clone {url-repo}.git
+  $ cd asciidoc-hs
+
+Then, build using `stack`:
+
+  $ stack build
+
+You can optionally copy the resulting executable under a location of your choice (that should be under the `PATH` environment variable):
+
+  $ cp "$(stack path --local-install-root)/bin/asciidoc-hs" ~/.local/bin/asciidoc-hs
 
 == Use
 
-_Comming soon_.
+In the https://github.com/gmarpons/asciidoc-hs/tree/main/examples[examples] directory of this repository you can find some example AsciiDoc files and its various conversions.
+
+The commands used to get the converted files are:
+
+:filename: ⟨FILENAME⟩
+
+* Convert to HTML using Asciidoctor:
++
+[subs=attributes]
+  $ asciidoctor -a "sectids!" -a "showtitle" -a "linkcss" -a "stylesheet=https://cdn.jsdelivr.net/gh/asciidoctor/asciidoctor@2.0/data/stylesheets/asciidoctor-default.css" -a "webfonts!" {filename}.adoc -o - > {filename}-asciidoctor.html
+
+* Convert to HTML using `asciidoc-hs` + Pandoc:
++
+[subs=attributes]
+  $ cat {filename}.adoc | asciidoc-hs | pandoc -f json -t html5 --standalone --css="https://cdn.jsdelivr.net/gh/asciidoctor/asciidoctor@2.0/data/stylesheets/asciidoctor-default.css" --css="./asciidoc-hs.css" > {filename}-pandoc.html
+
+* Convert to ODT using `asciidoc-hs` + Pandoc:
++
+[subs=attributes]
+  $ cat {filename}.adoc | asciidoc-hs | pandoc -f json -t odt > {filename}-pandoc.odt
+
+* Convert to Markdown using `asciidoc-hs` + Pandoc:
++
+[subs=attributes]
+  $ cat {filename}.adoc | asciidoc-hs | pandoc -f json -t markdown_strict > {filename}-pandoc.md
+
+File https://github.com/gmarpons/asciidoc-hs/blob/main/examples/asciidoctor-article-template.adoc[`asciidoctor-article-template.adoc`] presents a variety of AsciiDoc features.
+Those not yet supported by `asciidoc-hs` are commented out.
 
 == Contribute
 
 Contributions are Welcome!
-Contact me at gmarpons at mailbox.org.
+
+For any of:
+
+* reporting a bug,
+* filling a feature request,
+* opening a PR,
+
+we'll try to stick to the workflow and guidelines set in https://github.com/kowainik/.github/blob/main/CONTRIBUTING.md[Kowainik contributing guidelines], with the difference that we use https://hackage.haskell.org/package/ormolu[`ormolu`] instead of http://hackage.haskell.org/package/stylish-haskell[`stylish-haskell`].
+
+=== Implement a new AsciiDoc feature
+
+AsciiDoc is an extensive language.
+There are plenty of features still to be implemented, with varying degrees of difficulty.
+
+The recommended workflow is the following:
+
+. Check the https://github.com/gmarpons/asciidoc-hs/wiki/AsciiDoc-Compatibility-Matrix[compatibility matrix] to look for unsupported features.
+. Fill an issue with the proposed feature if you cannot find it in the https://github.com/gmarpons/asciidoc-hs/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement[issue tracker], yet.
+. Go inspect files https://github.com/gmarpons/asciidoc-hs/blob/main/src/Text/AsciiDoc/Inlines.hs[Inlines.hs] or https://github.com/gmarpons/asciidoc-hs/blob/main/src/Text/AsciiDoc/Blocks.hs[Blocks.hs] and see:
+** If the current AST data types (mainly `Inline` and `Block`) support the intended feature, or need to be modified.
+** Look for a similar and already implemented feature, and see how the corresponding parser functions are written.
+. Discuss a possible implementation in the issue tracker.
+. Modify the aforementioned files.
+. Add new https://github.com/gmarpons/asciidoc-hs/tree/main/test/Tests[test cases] for inlines or blocks.
+. Add the necessary new cases to functions `convertInline` or `convertBlock` in https://github.com/gmarpons/asciidoc-hs/blob/main/src/Text/AsciiDoc/Pandoc.hs[Pandoc.hs].
+
+You don't need to wait to complete the steps above before opening a PR.
+In fact, it's better if your code can be reviewed from the beginning.
+
+=== Other much appreciated contributions
+
+_Comming soon_.
 
 == Acknowledgements
 
