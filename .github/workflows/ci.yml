@@ -29,11 +29,12 @@ jobs:
         ghc:
           - "8.8.4"
           - "8.10.5"
+          - "9.0.1"
         exclude:
           - os: macOS-latest
-            ghc: 8.8.4
+            ghc: ["8.8.4", "8.10.5"]
           - os: windows-latest
-            ghc: 8.8.4
+            ghc: ["8.8.4", "8.10.5"]
 
     steps:
     - name: Checkout repository
@@ -63,7 +64,7 @@ jobs:
       run: |
         cabal configure --enable-tests --enable-benchmarks --enable-documentation --test-show-details=direct
         cabal update
-        cabal build
+        cabal build cabal build lib:asciidoc-hs exe:asciidoc-hs asciidoc-hs-test
 
     - name: Test
       run: |
