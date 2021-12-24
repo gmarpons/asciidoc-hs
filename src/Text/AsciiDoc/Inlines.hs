@@ -54,6 +54,7 @@ import Control.Monad.Combinators hiding
   )
 import Control.Monad.Combinators.NonEmpty (some)
 import Data.Char (isAlphaNum, isSpace)
+import Data.Functor (void)
 import Data.Generics (Data, Typeable)
 import Data.List.NonEmpty (NonEmpty (..), (<|))
 import qualified Data.List.NonEmpty as NE
@@ -321,7 +322,7 @@ muP = do
   Parsec.label (pure ()) "MU"
   st <- Parsec.getState
   Parsec.notFollowedBy (choice $ tryToCloseMarkP <$> closableMarks (openEnclosures st))
-    <|> Parsec.lookAhead (() <$ unconstrainedP)
+    <|> Parsec.lookAhead (void unconstrainedP)
 
 -- | Function called after the opening mark of an enclosure (i.e., after a
 -- character of kind other), and before a character of kind other.
@@ -339,7 +340,7 @@ piP = do
   case openEnclosures st of
     (_ : es) ->
       Parsec.notFollowedBy (choice $ tryToCloseMarkP <$> closableMarks es)
-        <|> Parsec.lookAhead (() <$ unconstrainedP)
+        <|> Parsec.lookAhead (void unconstrainedP)
     [] -> pure ()
 
 -- | Function called after a character of kind gap, and before a character of
@@ -366,7 +367,7 @@ phiP = do
   Parsec.label (pure ()) "PHI"
   st <- Parsec.getState
   Parsec.notFollowedBy (choice $ markP <$> openEnclosures st)
-    <|> () <$ Parsec.lookAhead (choice $ markP <$> concatMap extendedMarksOf (openEnclosures st))
+    <|> void (Parsec.lookAhead (choice $ markP <$> concatMap extendedMarksOf (openEnclosures st)))
 
 -- | Function called before the opening mark for a constrained enclosure (i.e.,
 -- before a character of kind other).
@@ -402,7 +403,7 @@ tryToCloseMarkP m = Parsec.try $ do
   Parsec.label (pure ()) $ "tryToCloseMarkP: " ++ show m
   _ <- markP $ closingMarkOf m
   when (isConstrained m) $ do
-    Parsec.eof <|> () <$ Parsec.satisfy (not . isAlphaNum)
+    Parsec.eof <|> void (Parsec.satisfy (not . isAlphaNum))
 
 -- EBNF grammar terminal symbols  ----------------------------------------------
 
