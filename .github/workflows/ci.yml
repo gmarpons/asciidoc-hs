@@ -24,17 +24,21 @@ jobs:
     needs: ormolu
     strategy:
       matrix:
-        os: [ubuntu-latest, macOS-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         cabal: [latest]
         ghc:
           - "8.8.4"
           - "8.10.7"
           - "9.0.1"
         exclude:
-          - os: macOS-latest
-            ghc: ["8.8.4", "8.10.7"]
+          - os: macos-latest
+            ghc: "8.8.4"
+          - os: macos-latest
+            ghc: "8.10.7"
           - os: windows-latest
-            ghc: ["8.8.4", "8.10.7"]
+            ghc: "8.8.4"
+          - os: windows-latest
+            ghc: "8.10.7"
 
     steps:
     - name: Checkout repository
