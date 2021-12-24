@@ -16,6 +16,7 @@ extra-doc-files:        CHANGELOG.adoc
                         README.adoc
 tested-with:            GHC == 8.8.4
                         GHC == 8.10.7
+                        GHC == 9.0.1
 
 source-repository head
   type:                 git
@@ -27,7 +28,7 @@ flag debug-with-parsec-free
   Manual:      True
 
 common common-options
-  build-depends:        base >= 4.13.0.0 && < 4.15
+  build-depends:        base >= 4.13.0.0 && < 4.16
   ghc-options:          -Wall
                         -Wcompat
                         -Widentities
