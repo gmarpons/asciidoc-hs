@@ -31,7 +31,8 @@ The main goal of this project is to become a reasonably complete implementation 
 We want to read AsciiDoc as it's used today (mainly in its https://docs.asciidoctor.org/asciidoctor/latest/[Asciidoctor] variant), and also support the https://www.eclipse.org/org/workinggroups/asciidoc-charter.php[AsciiDoc Standard] when it arrives.
 We're following the standardization process closely and we'll try to contribute to it if we see the opportunity.
 
-The supported features can be found in our https://github.com/gmarpons/asciidoc-hs/wiki/AsciiDoc-Compatibility-Matrix[compatibility matrix], currently based on Asciidoctor's feature list.
+There have been former attempts at a Pandoc Reader for AsciiDoc, but they have been abandoned.
+If you want to feed Pandoc with an AsciiDoc source, your best option at the moment is probably to first convert to Docbook using Asciidoctor.
 
 Secondary goals of the project are (but don't expect any roadmap or timeline at the moment):
 
@@ -44,10 +45,14 @@ This means to be able to track precise source mapping information, among others.
 
 * End up being distributed together with Pandoc, as a regular Pandoc Reader.
 
+== Features
+
+The supported features can be found in our https://github.com/gmarpons/asciidoc-hs/wiki/AsciiDoc-Compatibility-Matrix[compatibility matrix], currently based on Asciidoctor's feature list.
+
 == Install
 
-You'll need to build from source at the moment.
-I expect to upload the package to Hackage soon.
+You'll need to build from source for the time being.
+We expect to upload the package to Hackage soon.
 
 If you don't have Haskell installed in your system, try install GHC and Cabal with https://www.haskell.org/ghcup/[`ghcup`], and follow instructions for Cabal below.
 
@@ -147,10 +152,6 @@ The recommended workflow is the following:
 
 You don't need to wait to complete the steps above before opening a PR.
 In fact, it's better if your code can be reviewed from the beginning.
-
-=== Other much appreciated contributions
-
-_Comming soon_.
 
 == Acknowledgements
 
