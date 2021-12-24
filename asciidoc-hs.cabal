@@ -15,7 +15,7 @@ category:               Text
 extra-doc-files:        CHANGELOG.adoc
                         README.adoc
 tested-with:            GHC == 8.8.4
-                        GHC == 8.10.4
+                        GHC == 8.10.7
 
 source-repository head
   type:                 git

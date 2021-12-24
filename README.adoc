@@ -153,10 +153,6 @@ The recommended workflow is the following:
 You don't need to wait to complete the steps above before opening a PR.
 In fact, it's better if your code can be reviewed from the beginning.
 
-=== Other much appreciated contributions
-
-_Comming soon_.
-
 == Acknowledgements
 
 This work has been supported by a https://www.tweag.io/blog/2020-02-14-os-fellowship/[Tweag Open Source Fellowship].
