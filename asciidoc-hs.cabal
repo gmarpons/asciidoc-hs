@@ -94,7 +94,7 @@ library
     build-depends:
                         containers >= 0.6.0.1,
                         mtl >= 2.1.2,
-                        optics-core >= 0.2,
+                        optics-core >= 0.3,
                         pandoc-types >= 1.20,
                         parsec-free >= 3.1.11.7,
                         parser-combinators >= 1.2,
@@ -104,11 +104,11 @@ library
   else
     build-depends:
                         containers >=0.6.0.1 && <0.7,
-                        optics-core >=0.2 && <0.5,
+                        optics-core >=0.3 && <0.5,
                         pandoc-types >=1.20 && <1.23,
                         parsec >=3.1.14 && <3.2,
                         parser-combinators >=1.2 && <1.4,
-                        syb ==0.7.*,
+                        syb >=0.7 && <0.8,
                         text >=1.2.4 && <1.3
 
 executable asciidoc-hs
@@ -135,12 +135,12 @@ test-suite asciidoc-hs-test
   build-depends:
                         asciidoc-hs,
                         containers >=0.6.0.1 && <0.7,
-                        hspec-expectations-pretty-diff >=0.7.2.5 && <0.8,
+                        hspec-expectations-pretty-diff >=0.7.2.5,
                         parsec >=3.1.14 && <3.2,
-                        pretty-show ==1.10.*,
-                        repr-tree-syb >=0.1.1 && <0.2,
-                        tasty >=1.1.0.3 && <1.5,
-                        tasty-hunit-compat ==0.2.*,
+                        pretty-show >=1.10,
+                        repr-tree-syb >=0.1.1,
+                        tasty >=1.1.0.3,
+                        tasty-hunit-compat >=0.2,
                         text >=1.2.4 && <1.3
   ghc-options:          -threaded
                         -rtsopts
